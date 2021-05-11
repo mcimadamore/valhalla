@@ -745,39 +745,47 @@ public class Check {
             if  (st.tsym == syms.objectType.tsym)
                 return;
             if (!st.tsym.isAbstract()) {
-                log.error(pos, Errors.ConcreteSupertypeForPrimitiveClass(c, st));
+                primitiveClassError(pos, c, Errors.ConcreteSupertypeForPrimitiveClass(c, st));
             }
             if ((st.tsym.flags() & HASINITBLOCK) != 0) {
-                log.error(pos, Errors.SuperClassDeclaresInitBlock(c, st));
+                primitiveClassError(pos, c, Errors.SuperClassDeclaresInitBlock(c, st));
             }
             // No instance fields and no arged constructors both mean inner classes cannot be inline supers.
             Type encl = st.getEnclosingType();
             if (encl != null && encl.hasTag(CLASS)) {
-                log.error(pos, Errors.SuperClassCannotBeInner(c, st));
+                primitiveClassError(pos, c, Errors.SuperClassCannotBeInner(c, st));
             }
             for (Symbol s : st.tsym.members().getSymbols(NON_RECURSIVE)) {
                 switch (s.kind) {
                 case VAR:
                     if ((s.flags() & STATIC) == 0) {
-                        log.error(pos, Errors.SuperFieldNotAllowed(s, c, st));
+                        primitiveClassError(pos, c, Errors.SuperFieldNotAllowed(s, c, st));
                     }
                     break;
                 case MTH:
                     if ((s.flags() & SYNCHRONIZED) != 0) {
-                        log.error(pos, Errors.SuperMethodCannotBeSynchronized(s, c, st));
+                        primitiveClassError(pos, c, Errors.SuperMethodCannotBeSynchronized(s, c, st));
                     } else if (s.isConstructor()) {
                         MethodSymbol m = (MethodSymbol)s;
                         if (m.getParameters().size() > 0) {
-                            log.error(pos, Errors.SuperConstructorCannotTakeArguments(m, c, st));
+                            primitiveClassError(pos, c, Errors.SuperConstructorCannotTakeArguments(m, c, st));
                         } else {
                             if ((m.flags() & (GENERATEDCONSTR | EMPTYNOARGCONSTR)) == 0) {
-                                log.error(pos, Errors.SuperNoArgConstructorMustBeEmpty(m, c, st));
+                                primitiveClassError(pos, c, Errors.SuperNoArgConstructorMustBeEmpty(m, c, st));
                             }
                         }
                     }
                     break;
                 }
             }
+        }
+    }
+
+    void primitiveClassError(DiagnosticPosition pos, ClassSymbol c, Error error) {
+        if ((c.flags_field & PRIMITIVE_CLASS) != 0) {
+            log.error(pos, error);
+        } else {
+            c.flags_field &= ~UNINITIALIZED_FIELD;
         }
     }
 
@@ -1959,9 +1967,9 @@ public class Check {
             return;
         }
 
-        if (origin.isPrimitiveClass() && other.owner == syms.objectType.tsym && m.type.getParameterTypes().size() == 0) {
+        if (other.owner == syms.objectType.tsym && m.type.getParameterTypes().size() == 0) {
             if (m.name == names.clone || m.name == names.finalize) {
-                log.error(TreeInfo.diagnosticPositionFor(m, tree),
+                primitiveClassError(TreeInfo.diagnosticPositionFor(m, tree), origin,
                         Errors.PrimitiveClassMayNotOverride(m.name));
                 m.flags_field |= BAD_OVERRIDE;
                 return;
@@ -2429,7 +2437,7 @@ public class Check {
     // where
     private void checkNonCyclicMembership(ClassSymbol c, DiagnosticPosition pos) {
         if ((c.flags_field & LOCKED) != 0) {
-            log.error(pos, Errors.CyclicPrimitiveClassMembership(c));
+            primitiveClassError(pos, c, Errors.CyclicPrimitiveClassMembership(c));
             return;
         }
         try {

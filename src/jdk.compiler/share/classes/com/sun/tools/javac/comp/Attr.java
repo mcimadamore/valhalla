@@ -120,6 +120,7 @@ public class Attr extends JCTree.Visitor {
     final ArgumentAttr argumentAttr;
     final MatchBindingsComputer matchBindingsComputer;
     final AttrRecover attrRecover;
+    private final boolean findPrimitiveClasses;
 
     public static Attr instance(Context context) {
         Attr instance = context.get(attrKey);
@@ -160,6 +161,7 @@ public class Attr extends JCTree.Visitor {
         attrRecover = AttrRecover.instance(context);
 
         Options options = Options.instance(context);
+        findPrimitiveClasses = options.isSet("findPrimitiveClasses");
 
         Source source = Source.instance(context);
         allowPoly = Feature.POLY.allowedInSource(source);
@@ -1309,6 +1311,12 @@ public class Attr extends JCTree.Visitor {
         VarSymbol v = tree.sym;
         Lint lint = env.info.lint.augment(v);
         Lint prevLint = chk.setLint(lint);
+
+        if (v.owner.kind == TYP &&
+                v.owner.flags_field != UNINITIALIZED_FIELD &&
+                !v.isFinal()) {
+            v.owner.flags_field &= ~UNINITIALIZED_FIELD;
+        }
 
         // Check that the variable's declared type is well-formed.
         boolean isImplicitLambdaParameter = env.tree.hasTag(LAMBDA) &&
@@ -5250,14 +5258,23 @@ public class Attr extends JCTree.Visitor {
     public void attribClass(DiagnosticPosition pos, ClassSymbol c) {
         try {
             annotate.flush();
-            attribClass(c);
-            if (types.isPrimitiveClass(c.type)) {
-                final Env<AttrContext> env = typeEnvs.get(c);
-                if (!allowValueMemberCycles) {
-                    if (env != null && env.tree != null && env.tree.hasTag(CLASSDEF))
-                        chk.checkNonCyclicMembership((JCClassDecl)env.tree);
-                }
+            if (findPrimitiveClasses &&
+                    !c.isPrimitiveClass() &&
+                    !c.isAbstract() && !c.isInterface() && !c.isEnum() && !c.isRecord()) {
+                c.flags_field |= UNINITIALIZED_FIELD;
             }
+            attribClass(c);
+
+            final Env<AttrContext> env = typeEnvs.get(c);
+            if (!allowValueMemberCycles) {
+                if (env != null && env.tree != null && env.tree.hasTag(CLASSDEF))
+                    chk.checkNonCyclicMembership((JCClassDecl)env.tree);
+            }
+
+            if ((c.flags_field & UNINITIALIZED_FIELD) != 0) {
+                log.warning(pos, Warnings.PotentialPrimitiveClassFound(c));
+            }
+
         } catch (CompletionFailure ex) {
             chk.completionError(pos, ex);
         }
@@ -5423,7 +5440,7 @@ public class Attr extends JCTree.Visitor {
 
                 attribClassBody(env, c);
 
-                if ((c.flags() & (PRIMITIVE_CLASS | ABSTRACT)) == PRIMITIVE_CLASS) { // for non-intersection, concrete values.
+                if ((c.flags() & ABSTRACT) == 0) { // for non-intersection, concrete values.
                     Assert.check(env.tree.hasTag(CLASSDEF));
                     JCClassDecl classDecl = (JCClassDecl) env.tree;
                     if (classDecl.extending != null) {
