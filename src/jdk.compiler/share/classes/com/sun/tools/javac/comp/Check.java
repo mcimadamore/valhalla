@@ -2425,7 +2425,7 @@ public class Check {
                     JCVariableDecl field = (JCVariableDecl) l.head;
                     if (cyclePossible(field.sym)) {
                         Type fieldType = field.sym.type;
-                        checkNonCyclicMembership((ClassSymbol) fieldType.tsym, field.pos());
+                        checkNonCyclicMembership(tree.sym, (ClassSymbol) fieldType.tsym, field.pos());
                     }
                 }
             }
@@ -2435,15 +2435,15 @@ public class Check {
 
     }
     // where
-    private void checkNonCyclicMembership(ClassSymbol c, DiagnosticPosition pos) {
+    private void checkNonCyclicMembership(ClassSymbol origin, ClassSymbol c, DiagnosticPosition pos) {
         if ((c.flags_field & LOCKED) != 0) {
-            primitiveClassError(pos, c, Errors.CyclicPrimitiveClassMembership(c));
+            primitiveClassError(pos, origin, Errors.CyclicPrimitiveClassMembership(c));
             return;
         }
         try {
             c.flags_field |= LOCKED;
             for (Symbol fld : c.members().getSymbols(s -> s.kind == VAR && cyclePossible((VarSymbol) s), NON_RECURSIVE)) {
-                checkNonCyclicMembership((ClassSymbol) fld.type.tsym, pos);
+                checkNonCyclicMembership(origin, (ClassSymbol) fld.type.tsym, pos);
             }
         } finally {
             c.flags_field &= ~LOCKED;
@@ -2451,7 +2451,8 @@ public class Check {
     }
         // where
         private boolean cyclePossible(VarSymbol symbol) {
-            return (symbol.flags() & STATIC) == 0 && types.isPrimitiveClass(symbol.type);
+            return (symbol.flags() & STATIC) == 0 &&
+                    (types.isPrimitiveClass(symbol.type) || types.isPrimitiveClassCandidate(symbol.type));
         }
 
     void checkNonCyclicDecl(JCClassDecl tree) {
