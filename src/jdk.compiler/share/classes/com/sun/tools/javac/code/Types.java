@@ -1028,10 +1028,6 @@ public class Types {
         return t != null && !t.isReferenceProjection() && t.tsym != null && (t.tsym.flags_field & Flags.PRIMITIVE_CLASS) != 0;
     }
 
-    public boolean isPrimitiveClassCandidate(Type t) {
-        return t != null && t.tsym != null && (t.tsym.flags_field & PRIMITIVE_CANDIDATE) != 0;
-    }
-
     // <editor-fold defaultstate="collapsed" desc="isSubtype">
     /**
      * Is t an unchecked subtype of s?

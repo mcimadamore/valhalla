@@ -2423,7 +2423,7 @@ public class Check {
             for (List<? extends JCTree> l = tree.defs; l.nonEmpty(); l = l.tail) {
                 if (l.head.hasTag(VARDEF)) {
                     JCVariableDecl field = (JCVariableDecl) l.head;
-                    if (cyclePossible(field.sym)) {
+                    if (cyclePossible(tree.sym, field.sym)) {
                         Type fieldType = field.sym.type;
                         checkNonCyclicMembership(tree.sym, (ClassSymbol) fieldType.tsym, field.pos());
                     }
@@ -2442,7 +2442,7 @@ public class Check {
         }
         try {
             c.flags_field |= LOCKED;
-            for (Symbol fld : c.members().getSymbols(s -> s.kind == VAR && cyclePossible((VarSymbol) s), NON_RECURSIVE)) {
+            for (Symbol fld : c.members().getSymbols(s -> s.kind == VAR && cyclePossible(origin, (VarSymbol) s), NON_RECURSIVE)) {
                 checkNonCyclicMembership(origin, (ClassSymbol) fld.type.tsym, pos);
             }
         } finally {
@@ -2450,9 +2450,9 @@ public class Check {
         }
     }
         // where
-        private boolean cyclePossible(VarSymbol symbol) {
+        private boolean cyclePossible(ClassSymbol origin, VarSymbol symbol) {
             return (symbol.flags() & STATIC) == 0 &&
-                    (types.isPrimitiveClass(symbol.type) || types.isPrimitiveClassCandidate(symbol.type));
+                    (types.isPrimitiveClass(symbol.type) || (symbol.type != null && symbol.type.tsym == origin));
         }
 
     void checkNonCyclicDecl(JCClassDecl tree) {
