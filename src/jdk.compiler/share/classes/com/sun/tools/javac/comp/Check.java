@@ -785,7 +785,7 @@ public class Check {
         if ((c.flags_field & PRIMITIVE_CLASS) != 0) {
             log.error(pos, error);
         } else {
-            c.flags_field &= ~UNINITIALIZED_FIELD;
+            c.flags_field &= ~PRIMITIVE_CANDIDATE;
         }
     }
 

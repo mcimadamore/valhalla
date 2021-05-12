@@ -1314,9 +1314,9 @@ public class Attr extends JCTree.Visitor {
         Lint prevLint = chk.setLint(lint);
 
         if (v.owner.kind == TYP &&
-                v.owner.flags_field != UNINITIALIZED_FIELD &&
+                v.owner.flags_field != PRIMITIVE_CANDIDATE &&
                 !v.isFinal()) {
-            v.owner.flags_field &= ~UNINITIALIZED_FIELD;
+            v.owner.flags_field &= ~PRIMITIVE_CANDIDATE;
         }
 
         // Check that the variable's declared type is well-formed.
@@ -5262,7 +5262,7 @@ public class Attr extends JCTree.Visitor {
             if (findPrimitiveClasses &&
                     !c.isPrimitiveClass() &&
                     !c.isAnonymous() && !c.isAbstract() && !c.isEnum() && !c.isRecord()) {
-                c.flags_field |= UNINITIALIZED_FIELD;
+                c.flags_field |= PRIMITIVE_CANDIDATE;
             }
             attribClass(c);
 
@@ -5272,7 +5272,7 @@ public class Attr extends JCTree.Visitor {
                     chk.checkNonCyclicMembership((JCClassDecl)env.tree);
             }
 
-            if ((c.flags_field & UNINITIALIZED_FIELD) != 0) {
+            if ((c.flags_field & PRIMITIVE_CANDIDATE) != 0) {
                 log.note(pos, Notes.PotentialPrimitiveClassFound(c));
             }
 

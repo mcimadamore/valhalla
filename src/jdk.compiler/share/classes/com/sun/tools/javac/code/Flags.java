@@ -397,6 +397,11 @@ public class Flags {
      */
     public static final long NON_SEALED = 1L<<63; // ClassSymbols
 
+    /**
+     * Flag to mark an identity class which might be turned into a primitive class.
+     */
+    public static final long PRIMITIVE_CANDIDATE = UNINITIALIZED_FIELD; // ClassSymbols only
+
     /** Modifier masks.
      */
     public static final int
