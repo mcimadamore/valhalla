@@ -55,6 +55,7 @@ import static com.sun.tools.javac.resources.CompilerProperties.Fragments.Diamond
 import static com.sun.tools.javac.resources.CompilerProperties.Fragments.DiamondInvalidArgs;
 import com.sun.tools.javac.resources.CompilerProperties.Errors;
 import com.sun.tools.javac.resources.CompilerProperties.Fragments;
+import com.sun.tools.javac.resources.CompilerProperties.Notes;
 import com.sun.tools.javac.resources.CompilerProperties.Warnings;
 import com.sun.tools.javac.tree.*;
 import com.sun.tools.javac.tree.JCTree.*;
@@ -5260,7 +5261,7 @@ public class Attr extends JCTree.Visitor {
             annotate.flush();
             if (findPrimitiveClasses &&
                     !c.isPrimitiveClass() &&
-                    !c.isAbstract() && !c.isInterface() && !c.isEnum() && !c.isRecord()) {
+                    !c.isAnonymous() && !c.isAbstract() && !c.isEnum() && !c.isRecord()) {
                 c.flags_field |= UNINITIALIZED_FIELD;
             }
             attribClass(c);
@@ -5272,7 +5273,7 @@ public class Attr extends JCTree.Visitor {
             }
 
             if ((c.flags_field & UNINITIALIZED_FIELD) != 0) {
-                log.warning(pos, Warnings.PotentialPrimitiveClassFound(c));
+                log.note(pos, Notes.PotentialPrimitiveClassFound(c));
             }
 
         } catch (CompletionFailure ex) {
