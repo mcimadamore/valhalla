@@ -1697,6 +1697,47 @@ public sealed interface MemorySegment permits AbstractMemorySegmentImpl {
     }
 
     /**
+     * Reads a complex double from this segment at the given offset, with the given layout.
+     *
+     * @param layout the layout of the region of memory to be read.
+     * @param offset offset in bytes (relative to this segment address) at which this access operation will occur.
+     * @return a complex double value read from this segment.
+     * @throws IllegalStateException if the {@linkplain #scope() scope} associated with this segment is not
+     * {@linkplain SegmentScope#isAlive() alive}.
+     * @throws WrongThreadException if this method is called from a thread {@code T},
+     * such that {@code scope().isAccessibleBy(T) == false}.
+     * @throws IllegalArgumentException if the access operation is
+     * <a href="MemorySegment.html#segment-alignment">incompatible with the alignment constraint</a> in the provided layout.
+     * @throws IndexOutOfBoundsException when the access operation falls outside the <em>spatial bounds</em> of the
+     * memory segment.
+     */
+    @ForceInline
+    default ComplexDouble get(ValueLayout.OfComplexDouble layout, long offset) {
+        return (ComplexDouble) ((ValueLayouts.OfComplexDoubleImpl) layout).accessHandle().get(this, offset);
+    }
+
+    /**
+     * Writes a complex double into this segment at the given offset, with the given layout.
+     *
+     * @param layout the layout of the region of memory to be written.
+     * @param offset offset in bytes (relative to this segment address) at which this access operation will occur.
+     * @param value the complex double value to be written.
+     * @throws IllegalStateException if the {@linkplain #scope() scope} associated with this segment is not
+     * {@linkplain SegmentScope#isAlive() alive}.
+     * @throws WrongThreadException if this method is called from a thread {@code T},
+     * such that {@code scope().isAccessibleBy(T) == false}.
+     * @throws IllegalArgumentException if the access operation is
+     * <a href="MemorySegment.html#segment-alignment">incompatible with the alignment constraint</a> in the provided layout.
+     * @throws IndexOutOfBoundsException when the access operation falls outside the <em>spatial bounds</em> of the
+     * memory segment.
+     * @throws UnsupportedOperationException if this segment is {@linkplain #isReadOnly() read-only}.
+     */
+    @ForceInline
+    default void set(ValueLayout.OfComplexDouble layout, long offset, ComplexDouble value) {
+        ((ValueLayouts.OfComplexDoubleImpl) layout).accessHandle().set(this, offset, value);
+    }
+
+    /**
      * Reads an address from this segment at the given offset, with the given layout. The read address is wrapped in
      * a native segment, associated with the {@linkplain SegmentScope#global() global scope}. Under normal conditions,
      * the size of the returned segment is {@code 0}. However, if the provided layout is an
@@ -2033,6 +2074,55 @@ public sealed interface MemorySegment permits AbstractMemorySegmentImpl {
         Utils.checkElementAlignment(layout, "Layout alignment greater than its size");
         // note: we know size is a small value (as it comes from ValueLayout::byteSize())
         ((ValueLayouts.OfDoubleImpl) layout).accessHandle().set(this, index * layout.byteSize(), value);
+    }
+
+    /**
+     * Reads a complex double from this segment at the given index, scaled by the given layout size.
+     *
+     * @param layout the layout of the region of memory to be read.
+     * @param index a logical index. The offset in bytes (relative to this segment address) at which the access operation
+     *              will occur can be expressed as {@code (index * layout.byteSize())}.
+     * @return a complex double value read from this segment.
+     * @throws IllegalStateException if the {@linkplain #scope() scope} associated with this segment is not
+     * {@linkplain SegmentScope#isAlive() alive}.
+     * @throws WrongThreadException if this method is called from a thread {@code T},
+     * such that {@code scope().isAccessibleBy(T) == false}.
+     * @throws IllegalArgumentException if the access operation is
+     * <a href="MemorySegment.html#segment-alignment">incompatible with the alignment constraint</a> in the provided layout,
+     * or if the layout alignment is greater than its size.
+     * @throws IndexOutOfBoundsException when the access operation falls outside the <em>spatial bounds</em> of the
+     * memory segment.
+     */
+    @ForceInline
+    default ComplexDouble getAtIndex(ValueLayout.OfComplexDouble layout, long index) {
+        Utils.checkElementAlignment(layout, "Layout alignment greater than its size");
+        // note: we know size is a small value (as it comes from ValueLayout::byteSize())
+        return (ComplexDouble) ((ValueLayouts.OfComplexDoubleImpl) layout).accessHandle().get(this, index * layout.byteSize());
+    }
+
+    /**
+     * Writes a complex double into this segment at the given index, scaled by the given layout size.
+     *
+     * @param layout the layout of the region of memory to be written.
+     * @param index a logical index. The offset in bytes (relative to this segment address) at which the access operation
+     *              will occur can be expressed as {@code (index * layout.byteSize())}.
+     * @param value the complex double value to be written.
+     * @throws IllegalStateException if the {@linkplain #scope() scope} associated with this segment is not
+     * {@linkplain SegmentScope#isAlive() alive}.
+     * @throws WrongThreadException if this method is called from a thread {@code T},
+     * such that {@code scope().isAccessibleBy(T) == false}.
+     * @throws IllegalArgumentException if the access operation is
+     * <a href="MemorySegment.html#segment-alignment">incompatible with the alignment constraint</a> in the provided layout,
+     * or if the layout alignment is greater than its size.
+     * @throws IndexOutOfBoundsException when the access operation falls outside the <em>spatial bounds</em> of the
+     * memory segment.
+     * @throws UnsupportedOperationException if this segment is {@linkplain #isReadOnly() read-only}.
+     */
+    @ForceInline
+    default void setAtIndex(ValueLayout.OfComplexDouble layout, long index, double value) {
+        Utils.checkElementAlignment(layout, "Layout alignment greater than its size");
+        // note: we know size is a small value (as it comes from ValueLayout::byteSize())
+        ((ValueLayouts.OfComplexDoubleImpl) layout).accessHandle().set(this, index * layout.byteSize(), value);
     }
 
     /**

@@ -35,7 +35,8 @@ abstract sealed class VarHandleSegmentViewBase extends VarHandle permits
         VarHandleSegmentAsFloats,
         VarHandleSegmentAsInts,
         VarHandleSegmentAsLongs,
-        VarHandleSegmentAsShorts {
+        VarHandleSegmentAsShorts,
+        VarHandleSegmentAsComplexDoubles {
 
     /** endianness **/
     final boolean be;

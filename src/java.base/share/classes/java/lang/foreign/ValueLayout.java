@@ -385,6 +385,36 @@ public sealed interface ValueLayout extends MemoryLayout {
     }
 
     /**
+     * A value layout whose carrier is {@code ComplexDouble.class}.
+     *
+     * @see #COMPLEX_DOUBLE
+     * @see #COMPLEX_DOUBLE_UNALIGNED
+     * @since 19
+     */
+    @PreviewFeature(feature = PreviewFeature.Feature.FOREIGN)
+    sealed interface OfComplexDouble extends ValueLayout permits ValueLayouts.OfComplexDoubleImpl {
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        OfComplexDouble withName(String name);
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        OfComplexDouble withBitAlignment(long bitAlignment);
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        OfComplexDouble withOrder(ByteOrder order);
+
+    }
+
+    /**
      * A value layout whose carrier is {@code MemorySegment.class}.
      *
      * @see #ADDRESS
@@ -528,6 +558,16 @@ public sealed interface ValueLayout extends MemoryLayout {
     OfDouble JAVA_DOUBLE = ValueLayouts.OfDoubleImpl.of(ByteOrder.nativeOrder());
 
     /**
+     * A value layout constant whose size is the same as that of a {@code ComplexDouble},
+     * bit alignment set to 128, and byte order set to {@link ByteOrder#nativeOrder()}.
+     * Equivalent to the following code:
+     * {@snippet lang=java :
+     * MemoryLayout.valueLayout(OfComplexDouble.class, ByteOrder.nativeOrder());
+     * }
+     */
+    OfComplexDouble COMPLEX_DOUBLE = ValueLayouts.OfComplexDoubleImpl.of(ByteOrder.nativeOrder());
+
+    /**
      * An unaligned value layout constant whose size is the same as that of a machine address ({@code size_t}),
      * and byte order set to {@link ByteOrder#nativeOrder()}.
      * Equivalent to the following code:
@@ -611,4 +651,16 @@ public sealed interface ValueLayout extends MemoryLayout {
      */
     OfDouble JAVA_DOUBLE_UNALIGNED = JAVA_DOUBLE.withBitAlignment(8);
 
+    /**
+     * An unaligned value layout constant whose size is the same as that of a {@code ComplexDouble}
+     * and byte order set to {@link ByteOrder#nativeOrder()}.
+     * Equivalent to the following code:
+     * {@snippet lang=java :
+     * COMPLEX_DOUBLE.withBitAlignment(8);
+     * }
+     * @apiNote Care should be taken when using unaligned value layouts as they may induce
+     *          performance and portability issues.
+     */
+    OfComplexDouble COMPLEX_DOUBLE_UNALIGNED = ValueLayouts.OfComplexDoubleImpl.of(ByteOrder.nativeOrder())
+            .withBitAlignment(8);
 }

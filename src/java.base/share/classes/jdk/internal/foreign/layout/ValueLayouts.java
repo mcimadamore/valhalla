@@ -25,6 +25,7 @@
  */
 package jdk.internal.foreign.layout;
 
+import java.lang.foreign.ComplexDouble;
 import jdk.internal.foreign.Utils;
 import jdk.internal.misc.Unsafe;
 import jdk.internal.reflect.CallerSensitive;
@@ -36,6 +37,7 @@ import sun.invoke.util.Wrapper;
 import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.lang.foreign.ValueLayout.OfComplexDouble;
 import java.lang.invoke.VarHandle;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -173,6 +175,7 @@ public final class ValueLayouts {
                     || carrier == long.class
                     || carrier == float.class
                     || carrier == double.class
+                    || carrier == ComplexDouble.class
                     || carrier == MemorySegment.class;
         }
 
@@ -397,6 +400,33 @@ public final class ValueLayouts {
 
         public static OfDouble of(ByteOrder order) {
             return new OfDoubleImpl(order);
+        }
+
+    }
+
+    public static final class OfComplexDoubleImpl extends AbstractValueLayout<OfComplexDoubleImpl> implements ValueLayout.OfComplexDouble {
+
+        private OfComplexDoubleImpl(ByteOrder order) {
+            super(ComplexDouble.class, order, 128);
+        }
+
+        private OfComplexDoubleImpl(ByteOrder order, long bitAlignment, Optional<String> name) {
+            super(ComplexDouble.class, order, 128, bitAlignment, name);
+        }
+
+        @Override
+        OfComplexDoubleImpl dup(long bitAlignment, Optional<String> name) {
+            return new OfComplexDoubleImpl(order(), bitAlignment, name);
+        }
+
+        @Override
+        public OfComplexDoubleImpl withOrder(ByteOrder order) {
+            Objects.requireNonNull(order);
+            return new OfComplexDoubleImpl(order, bitAlignment(), name());
+        }
+
+        public static OfComplexDouble of(ByteOrder order) {
+            return new OfComplexDoubleImpl(order);
         }
 
     }

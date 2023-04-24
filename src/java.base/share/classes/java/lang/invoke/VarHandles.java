@@ -27,6 +27,7 @@ package java.lang.invoke;
 
 import jdk.internal.value.PrimitiveClass;
 import sun.invoke.util.Wrapper;
+import java.lang.foreign.ComplexDouble;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -330,10 +331,10 @@ final class VarHandles {
      */
     static VarHandle memorySegmentViewHandle(Class<?> carrier, long alignmentMask,
                                              ByteOrder byteOrder) {
-        if (!carrier.isPrimitive() || carrier == void.class || carrier == boolean.class) {
+        if ((!carrier.isPrimitive() && carrier != ComplexDouble.class) || carrier == void.class || carrier == boolean.class) {
             throw new IllegalArgumentException("Invalid carrier: " + carrier.getName());
         }
-        long size = Wrapper.forPrimitiveType(carrier).bitWidth() / 8;
+        long size = carrier == ComplexDouble.class ? 16 : Wrapper.forPrimitiveType(carrier).bitWidth() / 8;
         boolean be = byteOrder == ByteOrder.BIG_ENDIAN;
         boolean exact = false;
 
@@ -351,6 +352,8 @@ final class VarHandles {
             return maybeAdapt(new VarHandleSegmentAsLongs(be, size, alignmentMask, exact));
         } else if (carrier == double.class) {
             return maybeAdapt(new VarHandleSegmentAsDoubles(be, size, alignmentMask, exact));
+        } else if (carrier == ComplexDouble.class) {
+            return maybeAdapt(new VarHandleSegmentAsComplexDoubles(be, size, alignmentMask, exact));
         } else {
             throw new IllegalStateException("Cannot get here");
         }
