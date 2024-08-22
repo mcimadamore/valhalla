@@ -195,7 +195,7 @@ public class JavacParser implements Parser {
         this.allowSealedTypes = Feature.SEALED_CLASSES.allowedInSource(source);
         this.allowValueClasses = (!preview.isPreview(Feature.VALUE_CLASSES) || preview.isEnabled()) &&
                 Feature.VALUE_CLASSES.allowedInSource(source);
-        this.enableNullRestrictedTypes = fac.options.isSet("enableNullRestrictedTypes");
+        this.enableNullRestrictedTypes = true;//fac.options.isSet("enableNullRestrictedTypes");
     }
 
     /** Construct a parser from an existing parser, with minimal overhead.
@@ -706,10 +706,6 @@ public class JavacParser implements Parser {
             if (tyannos != null && tyannos.nonEmpty()) {
                 t = toP(F.at(tyannos.head.pos).AnnotatedType(tyannos, t));
             }
-        }
-        if (enableNullRestrictedTypes && EMOTIONAL_QUALIFIER.test(token.kind)) {
-            setNullMarker(t);
-            nextToken();
         }
         return t;
     }
@@ -1376,7 +1372,6 @@ public class JavacParser implements Parser {
         int pos = token.pos;
         JCExpression t;
         List<JCExpression> typeArgs = typeArgumentsOpt(EXPR);
-        boolean emotionalMarkersOK = false;
         switch (token.kind) {
         case QUES:
             if (isMode(TYPE) && isMode(TYPEARG) && !isMode(NOPARAMS)) {
@@ -1519,7 +1514,6 @@ public class JavacParser implements Parser {
             } else {
                 t = toP(F.at(token.pos).Ident(ident()));
                 if (enableNullRestrictedTypes && EMOTIONAL_QUALIFIER.test(token.kind) && (peekToken(LBRACKET) || peekToken(LT))) {
-                    emotionalMarkersOK = true;
                     selectTypeMode();
                     setNullMarker(t);
                     nextToken();
@@ -1674,16 +1668,6 @@ public class JavacParser implements Parser {
                 }
             }
             if (typeArgs != null) illegal();
-            if (enableNullRestrictedTypes && EMOTIONAL_QUALIFIER.test(token.kind) && (token.kind == QUES || token.kind == BANG || (token.kind == STAR))) {
-                if (peekToken(LBRACKET) || peekToken(LT) || emotionalMarkersOK) {
-                    selectTypeMode();
-                    setNullMarker(t);
-                    nextToken();
-                } else {
-                    // not a type
-                    break;
-                }
-            }
             t = typeArgumentsOpt(t);
             break;
         case BYTE: case SHORT: case CHAR: case INT: case LONG: case FLOAT:

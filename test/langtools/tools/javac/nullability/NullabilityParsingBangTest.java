@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2023, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -27,13 +27,12 @@
  * @test
  * @enablePreview
  * @summary Smoke test for parsing of bang types
- * @compile -XDenableNullRestrictedTypes NullabilityParsingTest.java
+ * @compile -XDenableNullRestrictedTypes NullabilityParsingBangTest.java
  */
 
 import java.util.function.*;
-import java.util.*;
 
-class NullabilityParsingTest {
+class NullabilityParsingBangTest {
     static value class Point { public implicit Point(); }
     static value class Shape { public implicit Shape(); }
     // fields
@@ -78,11 +77,11 @@ class NullabilityParsingTest {
     // type test patterns
 
     void testTypeTestPatterns(Object o) {
-/*        switch (o) {
+        switch (o) {
             case Point! i -> throw new AssertionError();
             case Shape! s -> throw new AssertionError();
             default -> throw new AssertionError();
-        }*/
+        }
     }
 
     sealed interface I<X> {}
@@ -155,11 +154,11 @@ class NullabilityParsingTest {
     void testGenericCast(A a) {
         I<Point!> i2 = (I<Point!>)a;
     }
-/*
+
     void testGenericCast2(A a) {
         I<Point!> i2 = (I<Point!>)a;
     }
-*/
+
     // arrays
 
     Point![]![]![]! oarr;
@@ -176,17 +175,17 @@ class NullabilityParsingTest {
     }
 
     void testPatternRule(Object o) {
-/*        switch (o) {
+        switch (o) {
             case Point! s -> { }
                 default -> { }
-        }*/
+        }
     }
 
     void testPatternCol(Object o) {
-/*        switch (o) {
+        switch (o) {
             case Point! s: { }
             default: { }
-        }*/
+        }
     }
 
     void testInstanceOfAndInfix1(Object a, boolean b) {
