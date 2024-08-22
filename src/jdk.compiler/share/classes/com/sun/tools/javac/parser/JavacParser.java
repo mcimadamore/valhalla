@@ -2174,7 +2174,7 @@ public class JavacParser implements Parser {
 
     /** Accepts all identifier-like tokens */
     protected Predicate<TokenKind> LAX_IDENTIFIER = t -> t == IDENTIFIER || t == UNDERSCORE || t == ASSERT || t == ENUM;
-    protected Predicate<TokenKind> EMOTIONAL_QUALIFIER = t -> t == BANG;
+    protected Predicate<TokenKind> EMOTIONAL_QUALIFIER = t -> t == BANG || t == QUES;
     protected Predicate<TokenKind> GENERIC_TYPE_END = t -> t == GT || t == GTGT || t == GTGTGT;
     protected Predicate<TokenKind> INSTANCEOF_INFIX = t -> t == AMPAMP || t == BARBAR ||
                                                            t == EQEQ || t == BANGEQ;
