@@ -1185,7 +1185,7 @@ public class JavacParser implements Parser {
                     JCModifiers mods = optFinal(0);
                     int typePos = token.pos;
                     JCExpression type = unannotatedType(false, NOQUES | TYPE);
-                    if (enableNullRestrictedTypes && token.kind == QUES && EMOTIONAL_QUALIFIER.test(token.kind)) {
+                    if (enableNullRestrictedTypes && token.kind == QUES) {
                         if (peekToken(IDENTIFIER, COMMA) || peekToken(IDENTIFIER, SEMI) ||
                                 peekToken(IDENTIFIER, RPAREN) || peekToken(IDENTIFIER, INSTANCEOF_INFIX)) {
                             setNullMarker(type);
@@ -2174,7 +2174,7 @@ public class JavacParser implements Parser {
 
     /** Accepts all identifier-like tokens */
     protected Predicate<TokenKind> LAX_IDENTIFIER = t -> t == IDENTIFIER || t == UNDERSCORE || t == ASSERT || t == ENUM;
-    protected Predicate<TokenKind> EMOTIONAL_QUALIFIER = t -> t == BANG || t == QUES;
+    protected Predicate<TokenKind> EMOTIONAL_QUALIFIER = t -> t == BANG || (t == QUES && !isMode(NOQUES)) || t == STAR;
     protected Predicate<TokenKind> GENERIC_TYPE_END = t -> t == GT || t == GTGT || t == GTGTGT;
     protected Predicate<TokenKind> INSTANCEOF_INFIX = t -> t == AMPAMP || t == BARBAR ||
                                                            t == EQEQ || t == BANGEQ;
