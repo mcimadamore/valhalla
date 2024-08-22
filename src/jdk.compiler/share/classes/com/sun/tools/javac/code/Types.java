@@ -1096,7 +1096,7 @@ public class Types {
 
     public boolean isSubtype(Type t, Type s, boolean capture) {
         if (t.equalsIgnoreMetadata(s)) {
-            if (enableNullRestrictedTypes && hasNarrowerNullability(s, t)) {
+            if (enableNullRestrictedTypes && warnStack.nonEmpty() && hasNarrowerNullability(s, t)) {
                 warnStack.head.warn(LintCategory.NULL);
             }
             return true;
@@ -1218,7 +1218,7 @@ public class Types {
                     && (!s.isParameterized() || containsTypeRecursive(s, sup))
                     && isSubtypeNoCapture(sup.getEnclosingType(),
                                           s.getEnclosingType());
-                if (result && enableNullRestrictedTypes && hasNarrowerNullability(s, t)) {
+                if (result && enableNullRestrictedTypes && warnStack.nonEmpty() && hasNarrowerNullability(s, t)) {
                     warnStack.head.warn(LintCategory.NULL);
                 }
                 return result;
@@ -1452,7 +1452,7 @@ public class Types {
                 boolean equal = t.tsym == s.tsym
                         && visit(t.getEnclosingType(), s.getEnclosingType())
                         && containsTypeEquivalent(t.getTypeArguments(), s.getTypeArguments());
-                if (equal && enableNullRestrictedTypes && !hasSameNullability(s, t)) {
+                if (equal && enableNullRestrictedTypes && warnStack.nonEmpty() && !hasSameNullability(s, t)) {
                     warnStack.head.warn(LintCategory.NULL);
                 }
                 return equal;
