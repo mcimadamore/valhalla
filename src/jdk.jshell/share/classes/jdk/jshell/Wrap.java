@@ -89,9 +89,13 @@ abstract class Wrap implements GeneralWrap {
      */
     public static Wrap varWrap(String source, Wrap wtype, String brackets,
                                Wrap wname, Wrap winit, boolean enhanced,
-                               Wrap anonDeclareWrap) {
+                               Wrap anonDeclareWrap, boolean isStrict) {
         List<Object> components = new ArrayList<>();
-        components.add(new VarDeclareWrap(wtype, brackets, wname));
+        if (isStrict) {
+            components.add(new VarDeclareWrap(wtype, brackets, wname, winit));
+        } else {
+            components.add(new VarDeclareWrap(wtype, brackets, wname));
+        }
         Wrap wmeth;
 
         if (winit == null) {
@@ -560,6 +564,10 @@ abstract class Wrap implements GeneralWrap {
 
         VarDeclareWrap(Wrap wtype, String brackets, Wrap wname) {
             super("    public static ", wtype, brackets + " ", wname, semi(wname));
+        }
+
+        VarDeclareWrap(Wrap wtype, String brackets, Wrap wname, Wrap winit) {
+            super("    public static ", wtype, brackets + " ", wname, " = ", winit, semi(winit));
         }
     }
 

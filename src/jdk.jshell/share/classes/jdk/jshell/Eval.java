@@ -46,6 +46,7 @@ import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreePathScanner;
 import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.JCTree.JCNullableTypeExpression.NullMarker;
 import com.sun.tools.javac.tree.Pretty;
 import java.io.IOException;
 import java.io.StringWriter;
@@ -334,12 +335,18 @@ class Eval {
             Wrap anonDeclareWrap = null;
             Wrap winit = null;
             boolean enhancedDesugaring = false;
+            boolean isStrict = false;
             Set<String> anonymousClasses = Collections.emptySet();
             StringBuilder sbBrackets = new StringBuilder();
             Tree baseType = vt.getType();
             if (baseType != null) {
                 tds.scan(baseType); // Not dependent on initializer
                 fullTypeName = displayType = typeName = EvalPretty.prettyExpr((JCTree) vt.getType(), false);
+                if (vt.getInitializer() != null &&
+                        baseType instanceof JCTree.JCNullableTypeExpression nullableTypeExpression &&
+                        nullableTypeExpression.getNullMarker() == NullMarker.NOT_NULL) {
+                    isStrict = true;
+                }
                 while (baseType instanceof ArrayTypeTree) {
                     //TODO handle annotations too
                     baseType = ((ArrayTypeTree) baseType).getType();
@@ -425,7 +432,7 @@ class Eval {
                 }
             }
             Wrap guts = Wrap.varWrap(compileSource, typeWrap, sbBrackets.toString(), wname,
-                                     winit, enhancedDesugaring, anonDeclareWrap);
+                                     winit, enhancedDesugaring, anonDeclareWrap, isStrict);
             DiagList modDiag = modifierDiagnostics(vt.getModifiers(), dis, true);
             Snippet snip = new VarSnippet(state.keyMap.keyForVariable(name), userSource, guts,
                     name, fieldName, subkind, displayType, hasEnhancedType ? fullTypeName : null, anonymousClasses,
