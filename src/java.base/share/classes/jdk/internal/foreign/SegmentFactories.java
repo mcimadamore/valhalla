@@ -28,17 +28,21 @@ package jdk.internal.foreign;
 import jdk.internal.access.foreign.UnmapperProxy;
 import jdk.internal.foreign.HeapMemorySegmentImpl.OfByte;
 import jdk.internal.foreign.HeapMemorySegmentImpl.OfChar;
+import jdk.internal.foreign.HeapMemorySegmentImpl.OfClass;
 import jdk.internal.foreign.HeapMemorySegmentImpl.OfDouble;
 import jdk.internal.foreign.HeapMemorySegmentImpl.OfFloat;
 import jdk.internal.foreign.HeapMemorySegmentImpl.OfInt;
 import jdk.internal.foreign.HeapMemorySegmentImpl.OfLong;
 import jdk.internal.foreign.HeapMemorySegmentImpl.OfShort;
+import jdk.internal.foreign.Utils.BaseAndScale;
 import jdk.internal.misc.Unsafe;
 import jdk.internal.misc.VM;
+import jdk.internal.value.ValueClass;
 import jdk.internal.vm.annotation.DontInline;
 import jdk.internal.vm.annotation.ForceInline;
 
 import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.util.Objects;
 
 /**
@@ -136,6 +140,22 @@ public class SegmentFactories {
         Objects.requireNonNull(arr);
         long byteSize = (long)arr.length * Utils.BaseAndScale.LONG.scale();
         return new OfLong(Utils.BaseAndScale.LONG.base(), arr, byteSize, false,
+                MemorySessionImpl.createHeap(arr));
+    }
+
+    public static <C> OfClass<C> fromArray(ValueLayout.OfClass<C> layout, C[] arr) {
+        ensureInitialized();
+        Objects.requireNonNull(layout);
+        Objects.requireNonNull(arr);
+        if (!arr.getClass().isArray() || !arr.getClass().componentType().equals(layout.carrier())) {
+            throw new IllegalArgumentException("Mismatched array type");
+        }
+        if (!ValueClass.isNullRestrictedArray(arr)) {
+            throw new IllegalArgumentException("Not a contiguous array");
+        }
+        BaseAndScale baseAndScale = BaseAndScale.of(arr);
+        long byteSize = (long)arr.length * baseAndScale.scale();
+        return new OfClass<>(baseAndScale, baseAndScale.base(), arr, byteSize, false,
                 MemorySessionImpl.createHeap(arr));
     }
 

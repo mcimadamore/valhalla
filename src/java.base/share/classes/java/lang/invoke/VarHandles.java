@@ -208,7 +208,7 @@ final class VarHandles {
         boolean hasAtomicAccess = (field.getModifiers() & Modifier.VOLATILE) != 0 ||
                 !(field.isNullRestricted()) ||
                 !field.getFieldType().isAnnotationPresent(LooselyConsistentValue.class);
-        return hasAtomicAccess && !HAS_OOPS.get(field.getFieldType());
+        return hasAtomicAccess && !ValueClass.hasOops(field.getFieldType());
     }
 
     static boolean isAtomicFlat(Object[] array) {
@@ -216,23 +216,8 @@ final class VarHandles {
         boolean hasAtomicAccess = ValueClass.isAtomicArray(array) ||
                 !ValueClass.isNullRestrictedArray(array) ||
                 !componentType.isAnnotationPresent(LooselyConsistentValue.class);
-        return hasAtomicAccess && !HAS_OOPS.get(componentType);
+        return hasAtomicAccess && !ValueClass.hasOops(componentType);
     }
-
-    static final ClassValue<Boolean> HAS_OOPS = new ClassValue<>() {
-        @Override
-        protected Boolean computeValue(Class<?> c) {
-            for (Field f : c.getDeclaredFields()) {
-                Class<?> ftype = f.getType();
-                if (UNSAFE.isFlatField(f) && HAS_OOPS.get(ftype)) {
-                    return true;
-                } else if (!ftype.isPrimitive()) {
-                    return true;
-                }
-            }
-            return false;
-        }
-    };
 
     // Required by instance field handles
     static Field getFieldFromReceiverAndOffset(Class<?> receiverType,

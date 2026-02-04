@@ -37,10 +37,16 @@ import java.lang.foreign.AddressLayout;
 import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.invoke.VarHandle;
 import java.nio.ByteOrder;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.function.IntFunction;
+import java.util.function.ToIntFunction;
 
 /**
  * A value layout. A value layout is used to model the memory layout associated with values of basic data types, such as <em>integral</em> types
@@ -116,7 +122,7 @@ public final class ValueLayouts {
         /**
          * {@return the carrier associated with this value layout}
          */
-        public final Class<?> carrier() {
+        public Class<?> carrier() {
             return carrier;
         }
 
@@ -295,6 +301,60 @@ public final class ValueLayouts {
             return new OfDoubleImpl(order, Double.BYTES, Optional.empty());
         }
 
+    }
+
+    public static final class OfClassImpl<C> extends AbstractValueLayout<OfClassImpl<C>> implements ValueLayout.OfClass<C> {
+
+        final ValueLayout delegatedLayout;
+        final MethodHandle from;
+        final MethodHandle to;
+
+        private OfClassImpl(Class<C> carrier, ValueLayout delegatedLayout, MethodHandle from, MethodHandle to, Optional<String> name) {
+            super(carrier, delegatedLayout.order(), delegatedLayout.byteSize(), delegatedLayout.byteAlignment(), name);
+            this.delegatedLayout = delegatedLayout;
+            this.from = from;
+            this.to = to;
+        }
+
+        @Override
+        OfClassImpl<C> dup(ByteOrder order, long byteAlignment, Optional<String> name) {
+            return new OfClassImpl<>(carrier(), ((AbstractValueLayout<?>)delegatedLayout).dup(order, byteAlignment, name),
+                    from, to, name);
+        }
+
+        public static <C, T> OfClassImpl<C> of(Class<C> carrier, ValueLayout delegatedLayout, ToIntFunction<T> from, IntFunction<C> to) {
+            return new OfClassImpl<>(carrier, delegatedLayout, TO_INT_FUNC_APPLY.bindTo(from), FROM_INT_FUNC_APPLY.bindTo(to), Optional.empty());
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public Class<C> carrier() {
+            return (Class<C>)super.carrier();
+        }
+
+        public ValueLayout delegatedLayout() {
+            return delegatedLayout;
+        }
+
+        public MethodHandle fromHandle() {
+            return from;
+        }
+
+        public MethodHandle toHandle() {
+            return to;
+        }
+
+        static final MethodHandle TO_INT_FUNC_APPLY;
+        static final MethodHandle FROM_INT_FUNC_APPLY;
+
+        static {
+            try {
+                TO_INT_FUNC_APPLY = MethodHandles.lookup().findVirtual(ToIntFunction.class, "applyAsInt", MethodType.methodType(int.class, Object.class));
+                FROM_INT_FUNC_APPLY = MethodHandles.lookup().findVirtual(IntFunction.class, "apply", MethodType.methodType(Object.class, int.class));
+            } catch (ReflectiveOperationException ex) {
+                throw new ExceptionInInitializerError(ex);
+            }
+        }
     }
 
     public static final class OfAddressImpl extends AbstractValueLayout<OfAddressImpl> implements AddressLayout {

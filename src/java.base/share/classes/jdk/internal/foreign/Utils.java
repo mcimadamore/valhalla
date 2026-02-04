@@ -27,6 +27,7 @@ package jdk.internal.foreign;
 
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.foreign.abi.SharedUtils;
+import jdk.internal.foreign.layout.ValueLayouts.OfClassImpl;
 import jdk.internal.misc.Unsafe;
 import jdk.internal.vm.annotation.ForceInline;
 import sun.invoke.util.Wrapper;
@@ -136,7 +137,10 @@ public final class Utils {
         Class<?> baseCarrier = layout.carrier();
         if (layout.carrier() == MemorySegment.class) {
             baseCarrier = ADDRESS_CARRIER_TYPE;
+        } else if (layout instanceof OfClassImpl<?> ofClass) {
+            baseCarrier = ofClass.delegatedLayout().carrier();
         }
+
 
         VarHandle handle = SharedSecrets.getJavaLangInvokeAccess().memorySegmentViewHandle(baseCarrier,
                 enclosing, layout.byteAlignment() - 1, layout.order(), constantOffset, offset);
@@ -146,6 +150,8 @@ public final class Utils {
                     MethodHandles.insertArguments(LONG_TO_ADDRESS_TARGET, 1, addressLayout) :
                     LONG_TO_ADDRESS_NO_TARGET;
             handle = MethodHandles.filterValue(handle, LONG_TO_CARRIER, longToAddressAdapter);
+        } else if (layout instanceof OfClassImpl<?> ofClass) {
+            handle = MethodHandles.filterValue(handle, ofClass.fromHandle(), ofClass.toHandle());
         }
         return handle;
     }
@@ -350,10 +356,15 @@ public final class Utils {
                 case float[]  _ -> BaseAndScale.FLOAT;
                 case long[]   _ -> BaseAndScale.LONG;
                 case double[] _ -> BaseAndScale.DOUBLE;
+                case Object[] arr when isSupportedValueClass(array.getClass().componentType()) -> new BaseAndScale(
+                        Unsafe.getUnsafe().arrayInstanceBaseOffset(arr),
+                        Unsafe.getUnsafe().arrayInstanceIndexScale(arr));
                 default -> throw new IllegalArgumentException("Not a supported array class: " + array.getClass().getSimpleName());
             };
         }
-
     }
 
+    static boolean isSupportedValueClass(Class<?> clazz) {
+        return clazz.equals(UnsignedInt.class);
+    }
 }

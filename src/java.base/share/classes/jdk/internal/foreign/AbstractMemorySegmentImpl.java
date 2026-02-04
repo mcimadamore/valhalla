@@ -43,6 +43,7 @@ import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SegmentAllocator;
 import java.lang.foreign.ValueLayout;
+import java.lang.foreign.ValueLayout.OfClass;
 import java.lang.reflect.Array;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
@@ -800,6 +801,17 @@ public abstract sealed class AbstractMemorySegmentImpl
         layout.varHandle().set((MemorySegment)this, offset, value);
     }
 
+    @Override
+    public <C> C get(OfClass<C> layout, long offset) {
+        return layout.carrier().cast(layout.varHandle().get((MemorySegment)this, offset));
+    }
+
+    @Override
+    public <C> void set(OfClass<C> layout, long offset, C value) {
+        Objects.requireNonNull(value);
+        layout.varHandle().set((MemorySegment)this, offset, value);
+    }
+
     @ForceInline
     @Override
     public MemorySegment get(AddressLayout layout, long offset) {
@@ -921,6 +933,20 @@ public abstract sealed class AbstractMemorySegmentImpl
     @ForceInline
     @Override
     public void setAtIndex(ValueLayout.OfDouble layout, long index, double value) {
+        Utils.checkElementAlignment(layout, "Layout alignment greater than its size");
+        layout.varHandle().set((MemorySegment)this, index * layout.byteSize(), value);
+    }
+
+    @ForceInline
+    @Override
+    public <C> C getAtIndex(ValueLayout.OfClass<C> layout, long index) {
+        Utils.checkElementAlignment(layout, "Layout alignment greater than its size");
+        return layout.carrier().cast(layout.varHandle().get((MemorySegment)this, index * layout.byteSize()));
+    }
+
+    @ForceInline
+    @Override
+    public <C> void setAtIndex(ValueLayout.OfClass<C> layout, long index, C value) {
         Utils.checkElementAlignment(layout, "Layout alignment greater than its size");
         layout.varHandle().set((MemorySegment)this, index * layout.byteSize(), value);
     }

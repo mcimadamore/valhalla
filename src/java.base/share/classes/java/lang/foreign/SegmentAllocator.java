@@ -29,8 +29,10 @@ import jdk.internal.foreign.AbstractMemorySegmentImpl;
 import jdk.internal.foreign.ArenaImpl;
 import jdk.internal.foreign.SlicingAllocator;
 import jdk.internal.foreign.StringSupport;
+import jdk.internal.value.ValueClass;
 import jdk.internal.vm.annotation.ForceInline;
 
+import java.nio.ByteOrder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
@@ -329,6 +331,32 @@ public interface SegmentAllocator {
     }
 
     /**
+     * {@return a new memory segment initialized with the provided value}
+     * <p>
+     * The size of the allocated memory segment is the
+     * {@linkplain MemoryLayout#byteSize() size} of the given layout. The given value is
+     * written into the segment according to the byte order and alignment constraint of
+     * the given layout.
+     *
+     * @implSpec The default implementation is equivalent to:
+     * {@snippet lang=java :
+     *  MemorySegment seg = allocate(Objects.requireNonNull(layout));
+     *  seg.set(layout, 0, value);
+     *  return seg;
+     * }
+     *
+     * @param layout the layout of the block of memory to be allocated
+     * @param value  the value to be set in the newly allocated memory segment
+     * @param <C> the type of the value to be set
+     */
+    default <C> MemorySegment allocateFrom(ValueLayout.OfClass<C> layout, C value) {
+        Objects.requireNonNull(layout);
+        MemorySegment seg = allocateNoInit(layout);
+        seg.set(layout, 0, value);
+        return seg;
+    }
+
+    /**
      * {@return a new memory segment initialized with the
      * {@linkplain MemorySegment#address() address} of the provided memory segment}
      * <p>
@@ -596,6 +624,44 @@ public interface SegmentAllocator {
     default MemorySegment allocateFrom(ValueLayout.OfDouble elementLayout, double... elements) {
         return allocateFrom(elementLayout, MemorySegment.ofArray(elements),
                 ValueLayout.JAVA_DOUBLE, 0, elements.length);
+    }
+
+    /**
+     * {@return a new memory segment initialized with the elements in the provided
+     *          array}
+     * <p>
+     * The size of the allocated memory segment is
+     * {@code elementLayout.byteSize() * elements.length}. The contents of
+     * the source array is copied into the result segment element by element, according
+     * to the byte order and alignment constraint of the given element layout.
+     *
+     * @implSpec The default implementation for this method is equivalent to the
+     *           following code:
+     * {@snippet lang = java:
+     * import org.junit.jupiter.api.Order;import java.nio.ByteOrder;this.allocateFrom(elementLayout, MemorySegment.ofArray(array),
+     *                   elementLayout.withOrder(ByteOrder.nativeOrder()).withByteAlignment(elementLayout.byteSize()), 0, array.length)
+     *}
+     * @param elementLayout the element layout of the array to be allocated
+     * @param elements      the double elements to be copied to the newly allocated
+     *                      memory block
+     * @param <C> the type of the elements
+     * @throws IllegalArgumentException if
+     *         {@code elementLayout.byteAlignment() > elementLayout.byteSize()}
+     */
+    @ForceInline // @@@: no varargs because otherwise we get warnings at the callsite
+    default <C> MemorySegment allocateFrom(ValueLayout.OfClass<C> elementLayout, C[] elements) {
+        Objects.requireNonNull(elements);
+        if (!ValueClass.isNullRestrictedArray(elements)) {
+            // @@@: are we trying too hard?
+            @SuppressWarnings("unchecked")
+            C[] newElements = (C[])ValueClass.newNullRestrictedNonAtomicArray(elementLayout.carrier(), elements.length,
+                    elements.length == 0 ? null : elements[0]);
+            System.arraycopy(elements, 0, newElements, 0, elements.length);
+            elements = newElements;
+        }
+        ValueLayout sourceElementLayout = elementLayout.withOrder(ByteOrder.nativeOrder()).withByteAlignment(elementLayout.byteSize());
+        return allocateFrom(elementLayout, MemorySegment.ofArray(elementLayout, elements),
+                sourceElementLayout, 0, elements.length);
     }
 
     /**

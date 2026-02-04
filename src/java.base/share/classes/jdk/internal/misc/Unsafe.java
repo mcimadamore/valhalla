@@ -722,15 +722,17 @@ public final class Unsafe {
     }
 
     /**
-     * Check if a type is a primitive array type
+     * Check if a type is a primitive or flat array type
      *
-     * @param c the type to check
+     * @param o the instance to check
      *
      * @return true if the type is a primitive array type
      */
-    private void checkPrimitiveArray(Class<?> c) {
-        Class<?> componentType = c.getComponentType();
-        if (componentType == null || !componentType.isPrimitive()) {
+    private void checkPrimitiveOrFlatArray(Object o) {
+        Class<?> componentType = o.getClass().getComponentType();
+        if (componentType == null ||
+                (!componentType.isPrimitive() &&
+                        (!ValueClass.isFlatArray(o) || ValueClass.hasOops(componentType)))) {
             throw invalidInput();
         }
     }
@@ -750,7 +752,7 @@ public final class Unsafe {
 
         if (o != null) {
             // If on heap, it must be a primitive array
-            checkPrimitiveArray(o.getClass());
+            checkPrimitiveOrFlatArray(o);
         }
     }
 

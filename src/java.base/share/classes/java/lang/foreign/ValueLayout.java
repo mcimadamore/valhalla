@@ -26,6 +26,7 @@
 package java.lang.foreign;
 
 import jdk.internal.foreign.layout.ValueLayouts;
+import jdk.internal.foreign.layout.ValueLayouts.OfClassImpl;
 
 import java.lang.invoke.VarHandle;
 import java.nio.ByteOrder;
@@ -58,7 +59,7 @@ import java.nio.ByteOrder;
 public sealed interface ValueLayout extends MemoryLayout
         permits ValueLayout.OfBoolean, ValueLayout.OfByte, ValueLayout.OfChar,
         ValueLayout.OfShort, ValueLayout.OfInt,  ValueLayout.OfFloat,
-        ValueLayout.OfLong, ValueLayout.OfDouble, AddressLayout {
+        ValueLayout.OfLong, ValueLayout.OfDouble, ValueLayout.OfClass, AddressLayout {
 
     /**
      * {@return the value's byte order}
@@ -409,6 +410,49 @@ public sealed interface ValueLayout extends MemoryLayout
     }
 
     /**
+     * A value layout whose carrier is a Java class.
+     *
+     * @param <C> the type of the layout carrier
+     *
+     * @see #JAVA_DOUBLE
+     * @see #JAVA_DOUBLE_UNALIGNED
+     * @since 27
+     */
+    sealed interface OfClass<C> extends ValueLayout permits ValueLayouts.OfClassImpl {
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        Class<C> carrier();
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        OfClass<C> withName(String name);
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        OfClass<C> withoutName();
+
+        /**
+         * {@inheritDoc}
+         * @throws IllegalArgumentException {@inheritDoc}
+         */
+        @Override
+        OfClass<C> withByteAlignment(long byteAlignment);
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
+        OfClass<C> withOrder(ByteOrder order);
+    }
+
+    /**
      * An address layout constant whose size is the same as that of a
      * machine address ({@code size_t}), byte alignment set to {@code sizeof(size_t)},
      * byte order set to {@link ByteOrder#nativeOrder()}.
@@ -462,6 +506,14 @@ public sealed interface ValueLayout extends MemoryLayout
      * byte alignment set to 8, and byte order set to {@link ByteOrder#nativeOrder()}.
      */
     OfDouble JAVA_DOUBLE = ValueLayouts.OfDoubleImpl.of(ByteOrder.nativeOrder());
+
+    /**
+     * A value layout constant whose carrier is {@link UnsignedInt}, whose size is the same
+     * as that of a Java {@code int}, byte alignment set to 4, and byte order set to {@link ByteOrder#nativeOrder()}.
+     */
+    OfClass<UnsignedInt> JAVA_UNSIGNED_INT = ValueLayouts.OfClassImpl.of(UnsignedInt.class,
+            ValueLayout.JAVA_INT,
+            UnsignedInt::intValue, UnsignedInt::valueOf);
 
     /**
      * An unaligned address layout constant whose size is the same as that of a
@@ -548,4 +600,9 @@ public sealed interface ValueLayout extends MemoryLayout
      */
     OfDouble JAVA_DOUBLE_UNALIGNED = JAVA_DOUBLE.withByteAlignment(1);
 
+    /**
+     * A value layout constant whose carrier is {@link UnsignedInt}, whose size is the same
+     * as that of a Java {@code int}, byte alignment set to 1, and byte order set to {@link ByteOrder#nativeOrder()}.
+     */
+    OfClass<UnsignedInt> JAVA_UNSIGNED_INT_UNALIGNED = ValueLayout.JAVA_UNSIGNED_INT.withByteAlignment(1);
 }

@@ -28,6 +28,7 @@ package jdk.internal.value;
 import jdk.internal.access.JavaLangReflectAccess;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.misc.PreviewFeatures;
+import jdk.internal.misc.Unsafe;
 import jdk.internal.vm.annotation.IntrinsicCandidate;
 
 import java.lang.reflect.Field;
@@ -107,4 +108,27 @@ public final class ValueClass {
      */
     @IntrinsicCandidate
     public static native boolean isAtomicArray(Object array);
+
+    static final ClassValue<Boolean> HAS_OOPS = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> c) {
+            for (Field f : c.getDeclaredFields()) {
+                if (Modifier.isStatic(f.getModifiers())) continue;
+                Class<?> ftype = f.getType();
+                if (Unsafe.getUnsafe().isFlatField(f) && HAS_OOPS.get(ftype)) {
+                    return true;
+                } else if (!ftype.isPrimitive()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    };
+
+    /**
+     * {@return true if the given class has any oops fields }
+     */
+    public static boolean hasOops(Class<?> c) {
+        return HAS_OOPS.get(c);
+    }
 }

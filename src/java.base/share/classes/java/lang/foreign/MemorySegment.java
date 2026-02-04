@@ -1516,6 +1516,27 @@ public sealed interface MemorySegment permits AbstractMemorySegmentImpl {
     }
 
     /**
+     * Creates a heap segment backed by the on-heap region of memory that holds the given
+     * array. The provided array must be a value class array that is flattened -- that is,
+     * the array elements must be laid out in a contiguous manner, or an exception is thrown.
+     * <p>
+     * The scope of the returned segment is an automatic scope that keeps
+     * the given array reachable. The returned segment is always accessible, from any
+     * thread. Its {@link #address()} is set to zero.
+     *
+     * @param elemLayout the layout of the array elements
+     * @param cArray the array backing the heap segment
+     * @param <C> the array element type
+     * @throws IllegalArgumentException if the provided array is not a value class array
+     * or if its element are not flattened
+     * @return a heap memory segment backed by a double array
+     */
+    static <C> MemorySegment ofArray(ValueLayout.OfClass<C> elemLayout, C[] cArray) {
+        // @@@: should we throw, or should we copy into a new array?
+        return SegmentFactories.fromArray(elemLayout, cArray);
+    }
+
+    /**
      * A zero-length native segment modelling the {@code NULL} address. Equivalent to
      * {@code MemorySegment.ofAddress(0L)}.
      * <p>
@@ -1983,6 +2004,48 @@ public sealed interface MemorySegment permits AbstractMemorySegmentImpl {
     void set(ValueLayout.OfDouble layout, long offset, double value);
 
     /**
+     * Reads a value of type {@code C} from this segment at the given offset, with the given layout.
+     *
+     * @param layout the layout of the region of memory to be read
+     * @param offset the offset in bytes (relative to this segment address) at which
+     *                this access operation will occur.
+     * @param <C> the type of the value to be read
+     * @return a long value read from this segment
+     * @throws IllegalStateException if the {@linkplain #scope() scope} associated
+     *         with this segment is not {@linkplain Scope#isAlive() alive}
+     * @throws WrongThreadException if this method is called from a thread {@code T},
+     *         such that {@code isAccessibleBy(T) == false}
+     * @throws IllegalArgumentException if the access operation is
+     *         <a href="MemorySegment.html#segment-alignment">incompatible with the alignment constraint</a>
+     *         in the provided layout
+     * @throws IndexOutOfBoundsException if {@code offset > byteSize() - layout.byteSize()}
+     *         or {@code offset < 0}
+     */
+    <C> C get(ValueLayout.OfClass<C> layout, long offset);
+
+    /**
+     * Writes a value of type {@code C} into this segment at the given offset, with the given layout.
+     *
+     * @param layout the layout of the region of memory to be written
+     * @param offset the offset in bytes (relative to this segment address) at which
+     *               this access operation will occur
+     * @param value the double value to be written
+     * @param <C> the type of the value to be written
+     * @throws IllegalStateException if the {@linkplain #scope() scope} associated with
+     *         this segment is not {@linkplain Scope#isAlive() alive}
+     * @throws WrongThreadException if this method is called from a thread {@code T},
+     *         such that {@code isAccessibleBy(T) == false}
+     * @throws IllegalArgumentException if the access operation is
+     *         <a href="MemorySegment.html#segment-alignment">incompatible with the alignment constraint</a>
+     *         in the provided layout
+     * @throws IndexOutOfBoundsException if {@code offset > byteSize() - layout.byteSize()}
+     *         or {@code offset < 0}
+     * @throws IllegalArgumentException if this segment is
+     *         {@linkplain #isReadOnly() read-only}
+     */
+    <C> void set(ValueLayout.OfClass<C> layout, long offset, C value);
+
+    /**
      * Reads an address from this segment at the given offset, with the given layout.
      * The read address is wrapped in a native segment, associated with the global scope.
      * Under normal conditions, the size of the returned segment is {@code 0}. However,
@@ -2408,6 +2471,55 @@ public sealed interface MemorySegment permits AbstractMemorySegmentImpl {
      * @throws IllegalArgumentException if this segment is {@linkplain #isReadOnly() read-only}
      */
     void setAtIndex(ValueLayout.OfDouble layout, long index, double value);
+
+    /**
+     * Reads a value of type {@code C} from this segment at the given index, scaled by the given
+     * layout size.
+     *
+     * @param layout the layout of the region of memory to be read
+     * @param index a logical index. The offset in bytes (relative to this
+     *              segment address) at which the access operation will occur can be
+     *              expressed as {@code (index * layout.byteSize())}.
+     * @param <C> the type of the value to be read
+     * @return a value read from this segment
+     * @throws IllegalStateException if the {@linkplain #scope() scope} associated with
+     *         this segment is not {@linkplain Scope#isAlive() alive}
+     * @throws WrongThreadException if this method is called from a thread {@code T},
+     *         such that {@code isAccessibleBy(T) == false}
+     * @throws IllegalArgumentException if the access operation is
+     *         <a href="MemorySegment.html#segment-alignment">incompatible with the alignment constraint</a>
+     *         in the provided layout
+     * @throws IllegalArgumentException if {@code layout.byteAlignment() > layout.byteSize()}
+     * @throws IndexOutOfBoundsException if {@code index * layout.byteSize()} overflows
+     * @throws IndexOutOfBoundsException if {@code index * layout.byteSize() > byteSize() - layout.byteSize()}
+     *         or {@code index < 0}
+     */
+    <C> C getAtIndex(ValueLayout.OfClass<C> layout, long index);
+
+    /**
+     * Writes a value of type {@code C} into this segment at the given index, scaled by the given
+     * layout size.
+     *
+     * @param layout the layout of the region of memory to be written
+     * @param index a logical index. The offset in bytes (relative to this
+     *              segment address) at which the access operation will occur can be
+     *              expressed as {@code (index * layout.byteSize())}.
+     * @param value the value to be written
+     * @param <C> the type of the value to be written
+     * @throws IllegalStateException if the {@linkplain #scope() scope} associated with
+     *         this segment is not {@linkplain Scope#isAlive() alive}
+     * @throws WrongThreadException if this method is called from a thread {@code T},
+     *         such that {@code isAccessibleBy(T) == false}
+     * @throws IllegalArgumentException if the access operation is
+     *         <a href="MemorySegment.html#segment-alignment">incompatible with the alignment constraint</a>
+     *         in the provided layout
+     * @throws IllegalArgumentException if {@code layout.byteAlignment() > layout.byteSize()}
+     * @throws IndexOutOfBoundsException if {@code index * layout.byteSize()} overflows
+     * @throws IndexOutOfBoundsException if {@code index * layout.byteSize() > byteSize() - layout.byteSize()}
+     *         or {@code index < 0}
+     * @throws IllegalArgumentException if this segment is {@linkplain #isReadOnly() read-only}
+     */
+    <C> void setAtIndex(ValueLayout.OfClass<C> layout, long index, C value);
 
     /**
      * Reads an address from this segment at the given at the given index, scaled by the

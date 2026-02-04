@@ -28,6 +28,8 @@ package jdk.internal.foreign;
 
 import jdk.internal.access.JavaNioAccess;
 import jdk.internal.access.SharedSecrets;
+import jdk.internal.foreign.Utils.BaseAndScale;
+import jdk.internal.misc.Unsafe;
 import jdk.internal.vm.annotation.ForceInline;
 
 import java.lang.foreign.ValueLayout;
@@ -230,6 +232,37 @@ abstract sealed class HeapMemorySegmentImpl extends AbstractMemorySegmentImpl {
         @Override
         public long address() {
             return offset - Utils.BaseAndScale.LONG.base();
+        }
+    }
+
+    public static final class OfClass<C> extends HeapMemorySegmentImpl {
+
+        final BaseAndScale baseAndScale;
+
+        OfClass(BaseAndScale baseAndScale, long offset, Object base, long length, boolean readOnly, MemorySessionImpl session) {
+            super(offset, base, length, readOnly, session);
+            this.baseAndScale = baseAndScale;
+        }
+
+        @Override
+        OfClass<C> dup(long offset, long size, boolean readOnly, MemorySessionImpl scope) {
+            return new OfClass<>(baseAndScale, this.offset + offset, base, size, readOnly, scope);
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public C[] unsafeGetBase() {
+            return (C[])Objects.requireNonNull(base);
+        }
+
+        @Override
+        public long maxAlignMask() {
+            return baseAndScale.scale();
+        }
+
+        @Override
+        public long address() {
+            return offset - baseAndScale.base();
         }
     }
 
