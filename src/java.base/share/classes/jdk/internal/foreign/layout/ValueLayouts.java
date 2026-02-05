@@ -27,6 +27,7 @@ package jdk.internal.foreign.layout;
 
 import jdk.internal.foreign.LayoutPath;
 import jdk.internal.foreign.Utils;
+import jdk.internal.foreign.layout.ValueLayouts.OfClassImpl.AccessInfo;
 import jdk.internal.misc.Unsafe;
 import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
@@ -42,11 +43,9 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.invoke.VarHandle;
 import java.nio.ByteOrder;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Function;
-import java.util.function.IntFunction;
-import java.util.function.ToIntFunction;
 
 /**
  * A value layout. A value layout is used to model the memory layout associated with values of basic data types, such as <em>integral</em> types
@@ -159,7 +158,8 @@ public final class ValueLayouts {
                     || carrier == long.class
                     || carrier == float.class
                     || carrier == double.class
-                    || carrier == MemorySegment.class;
+                    || carrier == MemorySegment.class
+                    || isSupportedValueClass(carrier);
         }
 
         @ForceInline
@@ -305,25 +305,26 @@ public final class ValueLayouts {
 
     public static final class OfClassImpl<C> extends AbstractValueLayout<OfClassImpl<C>> implements ValueLayout.OfClass<C> {
 
-        final ValueLayout delegatedLayout;
-        final MethodHandle from;
-        final MethodHandle to;
+        final AccessInfo accessInfo;
 
-        private OfClassImpl(Class<C> carrier, ValueLayout delegatedLayout, MethodHandle from, MethodHandle to, Optional<String> name) {
-            super(carrier, delegatedLayout.order(), delegatedLayout.byteSize(), delegatedLayout.byteAlignment(), name);
-            this.delegatedLayout = delegatedLayout;
-            this.from = from;
-            this.to = to;
+        private OfClassImpl(Class<?> carrier, AccessInfo accessInfo, Optional<String> name) {
+            super(carrier, accessInfo.layout.order(), accessInfo.layout.byteSize(), accessInfo.layout.byteAlignment(), name);
+            this.accessInfo = accessInfo;
         }
 
         @Override
         OfClassImpl<C> dup(ByteOrder order, long byteAlignment, Optional<String> name) {
-            return new OfClassImpl<>(carrier(), ((AbstractValueLayout<?>)delegatedLayout).dup(order, byteAlignment, name),
-                    from, to, name);
+            return new OfClassImpl<>(carrier(), accessInfo.dup(order, byteAlignment), name);
         }
 
-        public static <C, T> OfClassImpl<C> of(Class<C> carrier, ValueLayout delegatedLayout, ToIntFunction<T> from, IntFunction<C> to) {
-            return new OfClassImpl<>(carrier, delegatedLayout, TO_INT_FUNC_APPLY.bindTo(from), FROM_INT_FUNC_APPLY.bindTo(to), Optional.empty());
+        public static <C> OfClassImpl<C> of(Class<C> carrier) {
+            return new OfClassImpl<>(carrier, ACCESS_INFOS.get(carrier), Optional.empty());
+        }
+
+        public record AccessInfo(ValueLayout layout, MethodHandle fromHandle, MethodHandle toHandle) {
+            AccessInfo dup(ByteOrder order, long byteAlignment) {
+                return new AccessInfo(layout.withOrder(order).withByteAlignment(byteAlignment), fromHandle, toHandle);
+            }
         }
 
         @Override
@@ -332,28 +333,8 @@ public final class ValueLayouts {
             return (Class<C>)super.carrier();
         }
 
-        public ValueLayout delegatedLayout() {
-            return delegatedLayout;
-        }
-
-        public MethodHandle fromHandle() {
-            return from;
-        }
-
-        public MethodHandle toHandle() {
-            return to;
-        }
-
-        static final MethodHandle TO_INT_FUNC_APPLY;
-        static final MethodHandle FROM_INT_FUNC_APPLY;
-
-        static {
-            try {
-                TO_INT_FUNC_APPLY = MethodHandles.lookup().findVirtual(ToIntFunction.class, "applyAsInt", MethodType.methodType(int.class, Object.class));
-                FROM_INT_FUNC_APPLY = MethodHandles.lookup().findVirtual(IntFunction.class, "apply", MethodType.methodType(Object.class, int.class));
-            } catch (ReflectiveOperationException ex) {
-                throw new ExceptionInInitializerError(ex);
-            }
+        public AccessInfo accessInfo() {
+            return accessInfo;
         }
     }
 
@@ -460,6 +441,32 @@ public final class ValueLayouts {
             return ValueLayouts.OfAddressImpl.of(order);
         } else {
             throw new IllegalArgumentException("Unsupported carrier: " + carrier.getName());
+        }
+    }
+
+    public static boolean isSupportedValueClass(Class<?> clazz) {
+        return ACCESS_INFOS.containsKey(clazz);
+    }
+
+    static final Map<Class<?>, AccessInfo> ACCESS_INFOS = Map.of(
+            UnsignedInt.class, new AccessInfo(ValueLayout.JAVA_INT,
+                    lookupVirtual(UnsignedInt.class, "intValue", int.class),
+                    lookupStatic(UnsignedInt.class, "valueOf", UnsignedInt.class, int.class))
+    );
+
+    static MethodHandle lookupStatic(Class<?> clazz, String name, Class<?> restype, Class<?>... paramTypes) {
+        try {
+            return MethodHandles.lookup().findStatic(clazz, name, MethodType.methodType(restype, paramTypes));
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    static MethodHandle lookupVirtual(Class<?> clazz, String name, Class<?> restype, Class<?>... paramTypes) {
+        try {
+            return MethodHandles.lookup().findVirtual(clazz, name, MethodType.methodType(restype, paramTypes));
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException(ex);
         }
     }
 }

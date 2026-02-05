@@ -92,6 +92,7 @@ public class TestNulls {
             ValueLayout.OfFloat.class,
             ValueLayout.OfLong.class,
             ValueLayout.OfDouble.class,
+            ValueLayout.OfClass.class,
             AddressLayout.class,
             PaddingLayout.class,
             GroupLayout.class,
@@ -107,7 +108,10 @@ public class TestNulls {
 
     static final Set<String> EXCLUDE_LIST = Set.of(
             "java.lang.foreign.MemorySegment/reinterpret(java.lang.foreign.Arena,java.util.function.Consumer)/1/0",
-            "java.lang.foreign.MemorySegment/reinterpret(long,java.lang.foreign.Arena,java.util.function.Consumer)/2/0"
+            "java.lang.foreign.MemorySegment/reinterpret(long,java.lang.foreign.Arena,java.util.function.Consumer)/2/0",
+            "java.lang.foreign.MemorySegment/ofArray(java.lang.foreign.ValueLayout$OfClass,java.lang.Object[])/1/1",
+            "java.lang.foreign.SegmentAllocator/allocateFrom(java.lang.foreign.ValueLayout$OfClass,java.lang.Object[])/1/1",
+            "java.lang.foreign.Arena/allocateFrom(java.lang.foreign.ValueLayout$OfClass,java.lang.Object[])/1/1"
     );
 
     static final Set<String> OBJECT_METHODS = Stream.of(Object.class.getMethods())
@@ -159,6 +163,7 @@ public class TestNulls {
         addDefaultMapping(ValueLayout.OfFloat.class, ValueLayout.JAVA_FLOAT);
         addDefaultMapping(ValueLayout.OfLong.class, JAVA_LONG);
         addDefaultMapping(ValueLayout.OfDouble.class, ValueLayout.JAVA_DOUBLE);
+        addDefaultMapping(ValueLayout.OfClass.class, ValueLayout.JAVA_UNSIGNED_INT);
         addDefaultMapping(PaddingLayout.class, MemoryLayout.paddingLayout(4));
         addDefaultMapping(GroupLayout.class, MemoryLayout.structLayout(ValueLayout.JAVA_INT));
         addDefaultMapping(StructLayout.class, MemoryLayout.structLayout(ValueLayout.JAVA_INT));

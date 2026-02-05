@@ -511,9 +511,7 @@ public sealed interface ValueLayout extends MemoryLayout
      * A value layout constant whose carrier is {@link UnsignedInt}, whose size is the same
      * as that of a Java {@code int}, byte alignment set to 4, and byte order set to {@link ByteOrder#nativeOrder()}.
      */
-    OfClass<UnsignedInt> JAVA_UNSIGNED_INT = ValueLayouts.OfClassImpl.of(UnsignedInt.class,
-            ValueLayout.JAVA_INT,
-            UnsignedInt::intValue, UnsignedInt::valueOf);
+    OfClass<UnsignedInt> JAVA_UNSIGNED_INT = ValueLayouts.OfClassImpl.of(UnsignedInt.class);
 
     /**
      * An unaligned address layout constant whose size is the same as that of a

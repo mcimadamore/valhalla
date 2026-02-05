@@ -1260,6 +1260,25 @@ public sealed interface MemorySegment permits AbstractMemorySegmentImpl {
     double[] toArray(ValueLayout.OfDouble elementLayout);
 
     /**
+     * Copy the contents of this memory segment into a new array.
+     *
+     * @param elementLayout the source element layout. If the byte order associated with
+     *                      the layout is different from the
+     *                      {@linkplain ByteOrder#nativeOrder native order}, a byte swap
+     *                      operation will be performed on each array element
+     * @param <C> the array element type
+     * @return a new double array whose contents are copied from this memory segment
+     * @throws IllegalStateException if the {@linkplain #scope() scope} associated with
+     *         this segment is not {@linkplain Scope#isAlive() alive}
+     * @throws WrongThreadException if this method is called from a thread {@code T},
+     *         such that {@code isAccessibleBy(T) == false}
+     * @throws IllegalStateException if this segment's contents cannot be copied into a
+     *         {@code C[]} instance, e.g. because {@code byteSize() % 8 != 0}, or
+     *         {@code byteSize() / 8 > Integer.MAX_VALUE}
+     */
+    <C> C[] toArray(ValueLayout.OfClass<C> elementLayout);
+
+    /**
      * Reads a null-terminated string from this segment at the given offset, using the
      * {@linkplain StandardCharsets#UTF_8 UTF-8} charset.
      * <p>

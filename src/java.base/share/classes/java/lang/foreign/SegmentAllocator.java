@@ -351,6 +351,7 @@ public interface SegmentAllocator {
      */
     default <C> MemorySegment allocateFrom(ValueLayout.OfClass<C> layout, C value) {
         Objects.requireNonNull(layout);
+        Objects.requireNonNull(value);
         MemorySegment seg = allocateNoInit(layout);
         seg.set(layout, 0, value);
         return seg;
@@ -648,12 +649,15 @@ public interface SegmentAllocator {
      * @throws IllegalArgumentException if
      *         {@code elementLayout.byteAlignment() > elementLayout.byteSize()}
      */
-    @ForceInline // @@@: no varargs because otherwise we get warnings at the callsite
-    default <C> MemorySegment allocateFrom(ValueLayout.OfClass<C> elementLayout, C[] elements) {
+    @ForceInline
+    @SuppressWarnings("unchecked")
+    // Note: use of varargs is fine here because we expect this to be called with some concrete C
+    // That is, value classes we want to use here are monomorphic (e.g. UnsignedInt, Float16, ...)
+    // Under such restrictions, no warning is generated at the use site.
+    default <C> MemorySegment allocateFrom(ValueLayout.OfClass<C> elementLayout, C... elements) {
         Objects.requireNonNull(elements);
         if (!ValueClass.isNullRestrictedArray(elements)) {
-            // @@@: are we trying too hard?
-            @SuppressWarnings("unchecked")
+            // @@@: Temporary workaround until we get better null-restricted array factories
             C[] newElements = (C[])ValueClass.newNullRestrictedNonAtomicArray(elementLayout.carrier(), elements.length,
                     elements.length == 0 ? null : elements[0]);
             System.arraycopy(elements, 0, newElements, 0, elements.length);

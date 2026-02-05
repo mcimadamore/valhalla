@@ -33,6 +33,7 @@ import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
 import jdk.internal.util.ArraysSupport;
 import jdk.internal.util.Preconditions;
+import jdk.internal.value.ValueClass;
 import jdk.internal.vm.annotation.DontInline;
 import jdk.internal.vm.annotation.ForceInline;
 import sun.nio.ch.DirectBuffer;
@@ -336,6 +337,18 @@ public abstract sealed class AbstractMemorySegmentImpl
     @Override
     public final double[] toArray(ValueLayout.OfDouble elementLayout) {
         return toArray(double[].class, elementLayout, double[]::new, MemorySegment::ofArray);
+    }
+
+    @Override
+    public final <C> C[] toArray(ValueLayout.OfClass<C> elementLayout) {
+        // @@@: Temporary workaround until we get better null-restricted array factories
+        @SuppressWarnings("unchecked")
+        IntFunction<C[]> arrayFactory = size ->
+                (C[])ValueClass.newNullRestrictedNonAtomicArray(elementLayout.carrier(), size,
+                        size > 0 ? get(elementLayout, 0) : null);
+        @SuppressWarnings("unchecked")
+        Class<C[]> arrayClass = (Class<C[]>)Array.newInstance(elementLayout.carrier(), 0).getClass();
+        return toArray(arrayClass, elementLayout, arrayFactory, arr -> MemorySegment.ofArray(elementLayout, arr));
     }
 
     private <Z> Z toArray(Class<Z> arrayClass, ValueLayout elemLayout, IntFunction<Z> arrayFactory, Function<Z, MemorySegment> segmentFactory) {
