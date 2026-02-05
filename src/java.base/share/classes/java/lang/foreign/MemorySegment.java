@@ -1543,16 +1543,14 @@ public sealed interface MemorySegment permits AbstractMemorySegmentImpl {
      * the given array reachable. The returned segment is always accessible, from any
      * thread. Its {@link #address()} is set to zero.
      *
-     * @param elemLayout the layout of the array elements
-     * @param cArray the array backing the heap segment
-     * @param <C> the array element type
-     * @throws IllegalArgumentException if the provided array is not a value class array
-     * or if its element are not flattened
+     * @param array the array backing the heap segment
+     * @throws IllegalArgumentException if the provided array is not supported,
+     * or its elements are not stored contiguously in memory.
      * @return a heap memory segment backed by a double array
      */
-    static <C> MemorySegment ofArray(ValueLayout.OfClass<C> elemLayout, C[] cArray) {
+    static MemorySegment ofArray(Object[] array) {
         // @@@: should we throw, or should we copy into a new array?
-        return SegmentFactories.fromArray(elemLayout, cArray);
+        return SegmentFactories.fromArray(array);
     }
 
     /**
@@ -2668,6 +2666,8 @@ public sealed interface MemorySegment permits AbstractMemorySegmentImpl {
      *         <a href="MemorySegment.html#segment-alignment">incompatible with the alignment constraint</a>
      *         in the source element layout
      * @throws IllegalArgumentException if {@code srcLayout.byteAlignment() > srcLayout.byteSize()}
+     * @throws IllegalArgumentException if the provided target array is not supported,
+     *                                  or its elements are not stored contiguously in memory.
      * @throws IndexOutOfBoundsException if {@code elementCount * srcLayout.byteSize()} overflows
      * @throws IndexOutOfBoundsException if {@code srcOffset > srcSegment.byteSize() - (elementCount * srcLayout.byteSize())}
      * @throws IndexOutOfBoundsException if {@code dstIndex > dstArray.length - elementCount}
@@ -2717,6 +2717,8 @@ public sealed interface MemorySegment permits AbstractMemorySegmentImpl {
      * @throws IllegalArgumentException if {@code offset} is
      *         <a href="MemorySegment.html#segment-alignment">incompatible with the alignment constraint</a>
      *         in the source element layout
+     * @throws IllegalArgumentException if the provided source array is not supported,
+     *                                  or its elements are not stored contiguously in memory.
      * @throws IllegalArgumentException if {@code dstLayout.byteAlignment() > dstLayout.byteSize()}
      * @throws IllegalArgumentException if {@code dstSegment} is {@linkplain #isReadOnly() read-only}
      * @throws IndexOutOfBoundsException if {@code elementCount * dstLayout.byteSize()} overflows

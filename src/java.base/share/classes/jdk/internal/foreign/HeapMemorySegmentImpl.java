@@ -235,7 +235,7 @@ abstract sealed class HeapMemorySegmentImpl extends AbstractMemorySegmentImpl {
         }
     }
 
-    public static final class OfClass<C> extends HeapMemorySegmentImpl {
+    public static final class OfClass extends HeapMemorySegmentImpl {
 
         final BaseAndScale baseAndScale;
 
@@ -245,14 +245,13 @@ abstract sealed class HeapMemorySegmentImpl extends AbstractMemorySegmentImpl {
         }
 
         @Override
-        OfClass<C> dup(long offset, long size, boolean readOnly, MemorySessionImpl scope) {
-            return new OfClass<>(baseAndScale, this.offset + offset, base, size, readOnly, scope);
+        OfClass dup(long offset, long size, boolean readOnly, MemorySessionImpl scope) {
+            return new OfClass(baseAndScale, this.offset + offset, base, size, readOnly, scope);
         }
 
         @Override
-        @SuppressWarnings("unchecked")
-        public C[] unsafeGetBase() {
-            return (C[])Objects.requireNonNull(base);
+        public Object[] unsafeGetBase() {
+            return (Object[])Objects.requireNonNull(base);
         }
 
         @Override

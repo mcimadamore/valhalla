@@ -143,19 +143,15 @@ public class SegmentFactories {
                 MemorySessionImpl.createHeap(arr));
     }
 
-    public static <C> OfClass<C> fromArray(ValueLayout.OfClass<C> layout, C[] arr) {
+    public static OfClass fromArray(Object[] arr) {
         ensureInitialized();
-        Objects.requireNonNull(layout);
         Objects.requireNonNull(arr);
-        if (!arr.getClass().isArray() || !arr.getClass().componentType().equals(layout.carrier())) {
-            throw new IllegalArgumentException("Mismatched array type");
-        }
+        BaseAndScale baseAndScale = BaseAndScale.of(arr);
         if (!ValueClass.isNullRestrictedArray(arr)) {
             throw new IllegalArgumentException("Not a contiguous array");
         }
-        BaseAndScale baseAndScale = BaseAndScale.of(arr);
         long byteSize = (long)arr.length * baseAndScale.scale();
-        return new OfClass<>(baseAndScale, baseAndScale.base(), arr, byteSize, false,
+        return new OfClass(baseAndScale, baseAndScale.base(), arr, byteSize, false,
                 MemorySessionImpl.createHeap(arr));
     }
 

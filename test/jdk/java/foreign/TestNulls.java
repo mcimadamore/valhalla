@@ -109,7 +109,7 @@ public class TestNulls {
     static final Set<String> EXCLUDE_LIST = Set.of(
             "java.lang.foreign.MemorySegment/reinterpret(java.lang.foreign.Arena,java.util.function.Consumer)/1/0",
             "java.lang.foreign.MemorySegment/reinterpret(long,java.lang.foreign.Arena,java.util.function.Consumer)/2/0",
-            "java.lang.foreign.MemorySegment/ofArray(java.lang.foreign.ValueLayout$OfClass,java.lang.Object[])/1/1",
+            "java.lang.foreign.MemorySegment/ofArray(java.lang.Object[])/0/1",
             "java.lang.foreign.SegmentAllocator/allocateFrom(java.lang.foreign.ValueLayout$OfClass,java.lang.Object[])/1/1",
             "java.lang.foreign.Arena/allocateFrom(java.lang.foreign.ValueLayout$OfClass,java.lang.Object[])/1/1"
     );

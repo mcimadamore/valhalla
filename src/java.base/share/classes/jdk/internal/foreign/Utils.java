@@ -31,6 +31,7 @@ import jdk.internal.foreign.layout.ValueLayouts;
 import jdk.internal.foreign.layout.ValueLayouts.OfClassImpl;
 import jdk.internal.foreign.layout.ValueLayouts.OfClassImpl.AccessInfo;
 import jdk.internal.misc.Unsafe;
+import jdk.internal.value.ValueClass;
 import jdk.internal.vm.annotation.ForceInline;
 import sun.invoke.util.Wrapper;
 
@@ -359,9 +360,15 @@ public final class Utils {
                 case float[]  _ -> BaseAndScale.FLOAT;
                 case long[]   _ -> BaseAndScale.LONG;
                 case double[] _ -> BaseAndScale.DOUBLE;
-                case Object[] arr when ValueLayouts.isSupportedValueClass(array.getClass().componentType()) -> new BaseAndScale(
-                        Unsafe.getUnsafe().arrayInstanceBaseOffset(arr),
-                        Unsafe.getUnsafe().arrayInstanceIndexScale(arr));
+                case Object[] arr when ValueLayouts.isSupportedValueClass(array.getClass().componentType()) -> {
+                    if (ValueClass.isNullRestrictedArray(array)) {
+                        yield new BaseAndScale(
+                                Unsafe.getUnsafe().arrayInstanceBaseOffset(arr),
+                                Unsafe.getUnsafe().arrayInstanceIndexScale(arr));
+                    } else {
+                        throw new IllegalArgumentException("Supported array is non-contiguous: " + array.getClass().getSimpleName());
+                    }
+                }
                 default -> throw new IllegalArgumentException("Not a supported array class: " + array.getClass().getSimpleName());
             };
         }

@@ -45,7 +45,7 @@ public class TestUnsignedInt {
     @Test
     public void testUnsignedInt() {
         UnsignedInt[] arr = (UnsignedInt[])ValueClass.newNullRestrictedNonAtomicArray(UnsignedInt.class, 10, UnsignedInt.valueOf(0));
-        MemorySegment seg = MemorySegment.ofArray(ValueLayout.JAVA_UNSIGNED_INT, arr);
+        MemorySegment seg = MemorySegment.ofArray(arr);
 
         assertEquals(40, seg.byteSize());
         assertEquals(UnsignedInt.ZERO, seg.getAtIndex(ValueLayout.JAVA_UNSIGNED_INT, 0));
@@ -94,6 +94,20 @@ public class TestUnsignedInt {
     @Test
     public void testBadOfArray() {
         assertThrows(IllegalArgumentException.class,
-                () -> MemorySegment.ofArray(ValueLayout.JAVA_UNSIGNED_INT, new UnsignedInt[10])); // not a flat array
+                () -> MemorySegment.ofArray(new UnsignedInt[10])); // not a flat array
+    }
+
+    @Test
+    public void testBadArraySourceSegmentCopy() {
+        MemorySegment to = Arena.ofAuto().allocate(ValueLayout.JAVA_UNSIGNED_INT, 10);
+        assertThrows(IllegalArgumentException.class,
+                () -> MemorySegment.copy(new UnsignedInt[10], 0, to, ValueLayout.JAVA_UNSIGNED_INT, 0, 10)); // not a flat array source
+    }
+
+    @Test
+    public void testBadArrayTargetSegmentCopy() {
+        MemorySegment from = Arena.ofAuto().allocate(ValueLayout.JAVA_UNSIGNED_INT, 10);
+        assertThrows(IllegalArgumentException.class,
+                () -> MemorySegment.copy(from, ValueLayout.JAVA_UNSIGNED_INT, 0, new UnsignedInt[10], 0, 10)); // not a flat array target
     }
 }

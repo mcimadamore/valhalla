@@ -348,7 +348,7 @@ public abstract sealed class AbstractMemorySegmentImpl
                         size > 0 ? get(elementLayout, 0) : null);
         @SuppressWarnings("unchecked")
         Class<C[]> arrayClass = (Class<C[]>)Array.newInstance(elementLayout.carrier(), 0).getClass();
-        return toArray(arrayClass, elementLayout, arrayFactory, arr -> MemorySegment.ofArray(elementLayout, arr));
+        return toArray(arrayClass, elementLayout, arrayFactory, MemorySegment::ofArray);
     }
 
     private <Z> Z toArray(Class<Z> arrayClass, ValueLayout elemLayout, IntFunction<Z> arrayFactory, Function<Z, MemorySegment> segmentFactory) {

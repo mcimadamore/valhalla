@@ -664,7 +664,7 @@ public interface SegmentAllocator {
             elements = newElements;
         }
         ValueLayout sourceElementLayout = elementLayout.withOrder(ByteOrder.nativeOrder()).withByteAlignment(elementLayout.byteSize());
-        return allocateFrom(elementLayout, MemorySegment.ofArray(elementLayout, elements),
+        return allocateFrom(elementLayout, MemorySegment.ofArray(elements),
                 sourceElementLayout, 0, elements.length);
     }
 
