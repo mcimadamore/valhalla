@@ -97,23 +97,15 @@ public final /* value */ class ComplexTextbook  {
     };
 
     /**
-     * The real component of the complex number.
+     * The real and imaginary component of the complex number, packed in 128 bits.
      */
-    private final double  real;
-
-    /**
-     * The imaginary component of the complex number.
-     * (Note that a more than textbook implementation may use a
-     * separate imaginary type.)
-     */
-    private final double  imag;
+    private final Bytes128 realImag;
 
     /**
      * Constructs a complex number.
      */
     private ComplexTextbook(double real, double imag) {
-        this.real = real;
-        this.imag = imag;
+        this.realImag = Bytes128.pack(Double.doubleToLongBits(real), Double.doubleToLongBits(imag));
     }
 
     /**
@@ -151,14 +143,14 @@ public final /* value */ class ComplexTextbook  {
      * {@return the real component of this complex number}
      */
     public double real() { // better as a static method?
-        return real;
+        return Double.longBitsToDouble(realImag.getLong(0));
     }
 
     /**
      * {@return the imaginary component of this complex number}
      */
     public double imag() { // better as a static method?
-        return imag;
+        return Double.longBitsToDouble(realImag.getLong(1));
     }
 
     /**
@@ -228,7 +220,7 @@ public final /* value */ class ComplexTextbook  {
      */
     @Override
     public String toString() {
-        return "(" + real + " + " + "i*" + imag  + ")";
+        return "(" + real() + " + " + "i*" + imag()  + ")";
     }
 
     /**
@@ -258,8 +250,8 @@ public final /* value */ class ComplexTextbook  {
         // All four signed complex zero values considered equal to
         // each other.
         return obj instanceof ComplexTextbook that &&
-            this.real == that.real &&
-            this.imag == that.imag;
+            this.real() == that.real() &&
+            this.imag() == that.imag();
     }
 
     /**
@@ -268,7 +260,7 @@ public final /* value */ class ComplexTextbook  {
     @Override
     public int hashCode(){
         // Add 0.0 to be consistent with current equals impl.
-        return Double.hashCode(real + 0.0) ^ Double.hashCode(imag + 0.0);
+        return Double.hashCode(real() + 0.0) ^ Double.hashCode(imag() + 0.0);
     }
 
     /**
@@ -283,8 +275,8 @@ public final /* value */ class ComplexTextbook  {
      * @param c2 the second complex number
      */
     public static boolean equivalent(ComplexTextbook c1, ComplexTextbook c2) {
-        return Double.compare(c1.real, c2.real) == 0 &&
-               Double.compare(c1.imag, c2.imag) == 0;
+        return Double.compare(c1.real(), c2.real()) == 0 &&
+               Double.compare(c1.imag(), c2.imag()) == 0;
     }
 
     // Arithmetic operators
@@ -302,10 +294,10 @@ public final /* value */ class ComplexTextbook  {
      */
     public static ComplexTextbook add(ComplexTextbook addend,
                                       ComplexTextbook augend) {
-        double a = addend.real;
-        double b = addend.imag;
-        double c = augend.real;
-        double d = augend.imag;
+        double a = addend.real();
+        double b = addend.imag();
+        double c = augend.real();
+        double d = augend.imag();
 
         return valueOf(a + c, b + d);
     }
@@ -323,10 +315,10 @@ public final /* value */ class ComplexTextbook  {
      */
     public static ComplexTextbook subtract(ComplexTextbook minuend,
                                            ComplexTextbook subtrahend) {
-        double a = minuend.real;
-        double b = minuend.imag;
-        double c = subtrahend.real;
-        double d = subtrahend.imag;
+        double a = minuend.real();
+        double b = minuend.imag();
+        double c = subtrahend.real();
+        double d = subtrahend.imag();
 
         return valueOf(a - c, b - d);
     }
@@ -349,10 +341,10 @@ public final /* value */ class ComplexTextbook  {
      */
     public static ComplexTextbook multiply(ComplexTextbook multiplier,
                                            ComplexTextbook multiplicand) {
-        double a = multiplier.real;
-        double b = multiplier.imag;
-        double c = multiplicand.real;
-        double d = multiplicand.imag;
+        double a = multiplier.real();
+        double b = multiplier.imag();
+        double c = multiplicand.real();
+        double d = multiplicand.imag();
 
         return valueOf(a*c - b*d, a*d + b*c);
     }
@@ -376,10 +368,10 @@ public final /* value */ class ComplexTextbook  {
      */
     public static ComplexTextbook multiplySilver(ComplexTextbook multiplier,
                                                  ComplexTextbook multiplicand) {
-        double a = multiplier.real;
-        double b = multiplier.imag;
-        double c = multiplicand.real;
-        double d = multiplicand.imag;
+        double a = multiplier.real();
+        double b = multiplier.imag();
+        double c = multiplicand.real();
+        double d = multiplicand.imag();
 
         return valueOf(silver_ad_bc(a, d, b, c),
                        silver_ad_bc(a, -c, b, d));
@@ -397,10 +389,10 @@ public final /* value */ class ComplexTextbook  {
      */
     public static ComplexTextbook multiplyGold(ComplexTextbook multiplier,
                                                ComplexTextbook multiplicand) {
-        double a = multiplier.real;
-        double b = multiplier.imag;
-        double c = multiplicand.real;
-        double d = multiplicand.imag;
+        double a = multiplier.real();
+        double b = multiplier.imag();
+        double c = multiplicand.real();
+        double d = multiplicand.imag();
 
         return valueOf(gold_ad_bc(a,  d, b, c),
                        gold_ad_bc(a, -c, b, d));
@@ -444,10 +436,10 @@ public final /* value */ class ComplexTextbook  {
      */
     public static ComplexTextbook divide(ComplexTextbook dividend,
                                          ComplexTextbook divisor) {
-        double a = dividend.real;
-        double b = dividend.imag;
-        double c = divisor.real;
-        double d = divisor.imag;
+        double a = dividend.real();
+        double b = dividend.imag();
+        double c = divisor.real();
+        double d = divisor.imag();
 
         double scale = c*c + d*d;
 
@@ -490,7 +482,7 @@ public final /* value */ class ComplexTextbook  {
      * @return the negation of the operand
      */
     public static ComplexTextbook negate(ComplexTextbook c) {
-        return valueOf(-c.real, -c.imag);
+        return valueOf(-c.real(), -c.imag());
     }
 
     /**
@@ -501,7 +493,7 @@ public final /* value */ class ComplexTextbook  {
      * <i>a</i>&nbsp;+&nbsp;&minus;<i>i</i>&middot;<i>b</i>
      */
     public ComplexTextbook conj() {
-        return valueOf(this.real, -this.imag);
+        return valueOf(this.real(), -this.imag());
     }
 
     /**
@@ -519,8 +511,8 @@ public final /* value */ class ComplexTextbook  {
         }
 
         // TODO: NaN and infinity handling
-        double a = c.real;
-        double b = c.imag;
+        double a = c.real();
+        double b = c.imag();
 
         double rho = abs(c);
         double v = rho + a;
@@ -540,8 +532,8 @@ public final /* value */ class ComplexTextbook  {
      * @see Math#abs(double)
      */
     public static double abs(ComplexTextbook c) {
-        double a = c.real;
-        double b = c.imag;
+        double a = c.real();
+        double b = c.imag();
         return StrictMath.hypot(a, b);
     }
 
@@ -562,7 +554,7 @@ public final /* value */ class ComplexTextbook  {
      * @param c a complex number
      */
     public static boolean isZero(ComplexTextbook c) {
-        return c.real == 0.0 && c.imag == 0.0;
+        return c.real() == 0.0 && c.imag() == 0.0;
     }
 
     /**
@@ -572,7 +564,7 @@ public final /* value */ class ComplexTextbook  {
      * @param c a complex number
      */
     public static boolean isNaN(ComplexTextbook c) {
-        return Double.isNaN(c.real) || Double.isNaN(c.imag);
+        return Double.isNaN(c.real()) || Double.isNaN(c.imag());
     }
 
     /**
@@ -582,7 +574,7 @@ public final /* value */ class ComplexTextbook  {
      * @param c a complex number
      */
     public static boolean isInfinite(ComplexTextbook c) {
-        return Double.isInfinite(c.real) || Double.isInfinite(c.imag);
+        return Double.isInfinite(c.real()) || Double.isInfinite(c.imag());
     }
 
     /**
@@ -592,6 +584,6 @@ public final /* value */ class ComplexTextbook  {
      * @param c a complex number
      */
     public static boolean isFinite(ComplexTextbook c) {
-        return Double.isFinite(c.real) && Double.isFinite(c.imag);
+        return Double.isFinite(c.real()) && Double.isFinite(c.imag());
     }
 }
