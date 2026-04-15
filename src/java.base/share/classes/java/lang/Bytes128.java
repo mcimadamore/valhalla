@@ -31,7 +31,6 @@ import jdk.internal.vm.annotation.LooselyConsistentValue;
 
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
-import java.nio.ByteOrder;
 import java.util.HexFormat;
 import java.util.Objects;
 
@@ -73,36 +72,31 @@ import java.util.Objects;
         return index == 0 ? lo : hi;
     }
 
-    public MemorySegment toSegment(ValueLayout laneLayout) {
+    public void intoSegment(MemorySegment segment, long offset, ValueLayout laneLayout) {
         Objects.requireNonNull(laneLayout);
-        return switch (laneLayout) {
-            case ValueLayout.OfByte _ -> MemorySegment.ofArray(new byte[]{
-                    getByte(0), getByte(1), getByte(2), getByte(3),
-                    getByte(4), getByte(5), getByte(6), getByte(7),
-                    getByte(8), getByte(9), getByte(10), getByte(11),
-                    getByte(12), getByte(13), getByte(14), getByte(15)}).asReadOnly();
-            case ValueLayout.OfShort ofShort -> MemorySegment.ofArray(new short[]{
-                    maybeSwap(getShort(0), ofShort), maybeSwap(getShort(1), ofShort), maybeSwap(getShort(2), ofShort), maybeSwap(getShort(3), ofShort),
-                    maybeSwap(getShort(4), ofShort), maybeSwap(getShort(5), ofShort), maybeSwap(getShort(6), ofShort), maybeSwap(getShort(7), ofShort)}).asReadOnly();
-            case ValueLayout.OfInt ofInt -> MemorySegment.ofArray(new int[]{
-                    maybeSwap(getInt(0), ofInt), maybeSwap(getInt(1), ofInt), maybeSwap(getInt(2), ofInt), maybeSwap(getInt(3), ofInt)}).asReadOnly();
-            case ValueLayout.OfLong ofLong -> MemorySegment.ofArray(new long[]{
-                    maybeSwap(getLong(0), ofLong), maybeSwap(getLong(1), ofLong)}).asReadOnly();
-            default ->
-                 throw new IllegalArgumentException("Unsupported lane type: " + laneLayout);
-        };
-    }
-
-    private short maybeSwap(short s, ValueLayout.OfShort ofShort) {
-        return ofShort.order() == ByteOrder.nativeOrder() ? s : Short.reverseBytes(s);
-    }
-
-    private int maybeSwap(int i, ValueLayout.OfInt ofInt) {
-        return ofInt.order() == ByteOrder.nativeOrder() ? i : Integer.reverseBytes(i);
-    }
-
-    private long maybeSwap(long l, ValueLayout.OfLong ofLong) {
-        return ofLong.order() == ByteOrder.nativeOrder() ? l : Long.reverseBytes(l);
+        switch (laneLayout) {
+            case ValueLayout.OfByte ofByte -> {
+                for (int i = 0; i < 16; i++) {
+                    segment.set(ofByte, offset + i, getByte(i));
+                }
+            }
+            case ValueLayout.OfShort ofShort -> {
+                for (int i = 0; i < 8; i++) {
+                    segment.set(ofShort, ofShort.scale(offset, i), getShort(i));
+                }
+            }
+            case ValueLayout.OfInt ofInt -> {
+                for (int i = 0; i < 4; i++) {
+                    segment.set(ofInt, ofInt.scale(offset, i), getInt(i));
+                }
+            }
+            case ValueLayout.OfLong ofLong -> {
+                for (int i = 0; i < 2; i++) {
+                    segment.set(ofLong, ofLong.scale(offset, i), getLong(i));
+                }
+            }
+            default -> throw new IllegalArgumentException("Unsupported lane type: " + laneLayout);
+        }
     }
 
     @Override
