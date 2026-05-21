@@ -2053,6 +2053,7 @@ public class Resolve {
                             EarlyConstructionContext context = env1.info.earlyConstruction;
                             if (context.isActive() &&
                                     !env1.info.attributionMode.isSpeculative &&
+                                    env1.enclClass.sym == context.owner &&
                                     sym.isMemberOf(context.owner, types)) {
                                 return earlyReferenceResult(env.tree, context, sym);
                             }
@@ -3916,6 +3917,7 @@ public class Resolve {
                         EarlyConstructionContext context = env1.info.earlyConstruction;
                         if (context.isActive() &&
                                 !env1.info.attributionMode.isSpeculative &&
+                                sym.owner == context.owner &&
                                 !env.info.earlyConstruction.isFieldAccessQualifier() &&
                                 !isReceiverParameter(env, tree)) {
                             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
@@ -3991,6 +3993,9 @@ public class Resolve {
             return field;
         }
         if (field.name == names._this || field.name == names._super) {
+            if (field.owner != context.owner) {
+                return field;
+            }
             if (context.isFieldAccessQualifier()) {
                 return field;
             }
@@ -3999,7 +4004,7 @@ public class Resolve {
         if (!isEarlyReference(env, base, field)) {
             return field;
         }
-        if (env.tree instanceof JCAssign) {
+        if (isWriteOnlyAssignment(env, base, field)) {
             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
             return field;
         }
@@ -4026,6 +4031,23 @@ public class Resolve {
         return base == null || TreeInfo.isThisOrSelectorDotThis(base) ||
                 TreeInfo.isSuperOrSelectorDotSuper(base) ||
                 TreeInfo.isExplicitThisReference(types, (ClassType)context.owner.type, base);
+    }
+
+    private boolean isWriteOnlyAssignment(Env<AttrContext> env, JCTree base, VarSymbol field) {
+        if (!(env.tree instanceof JCAssign assign)) {
+            return false;
+        }
+        JCExpression lhs = TreeInfo.skipParens(assign.lhs);
+        return switch (lhs.getTag()) {
+            case IDENT -> base == null &&
+                    ((JCIdent)lhs).name == field.name;
+            case SELECT -> {
+                JCFieldAccess select = (JCFieldAccess)lhs;
+                yield select.name == field.name &&
+                        TreeInfo.skipParens(select.selected) == TreeInfo.skipParens(base);
+            }
+            default -> false;
+        };
     }
 
     private void recordEarlyFieldRead(Env<AttrContext> env, VarSymbol field) {
