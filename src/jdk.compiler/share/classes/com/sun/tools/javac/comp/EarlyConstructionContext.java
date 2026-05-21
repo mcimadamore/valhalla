@@ -44,23 +44,23 @@ class EarlyConstructionContext {
     final boolean ctorPrologue;
     final boolean initializer;
 
-    private final boolean fieldAccessQualifier;
-    private final JCExpression fieldAccessBase;
+    private final boolean memberAccessQualifier;
+    private final JCExpression memberAccessBase;
 
     private EarlyConstructionContext(ClassSymbol owner,
                                      boolean onlyWarnings,
                                      boolean restricted,
                                      boolean ctorPrologue,
                                      boolean initializer,
-                                     boolean fieldAccessQualifier,
-                                     JCExpression fieldAccessBase) {
+                                     boolean memberAccessQualifier,
+                                     JCExpression memberAccessBase) {
         this.owner = owner;
         this.onlyWarnings = onlyWarnings;
         this.restricted = restricted;
         this.ctorPrologue = ctorPrologue;
         this.initializer = initializer;
-        this.fieldAccessQualifier = fieldAccessQualifier;
-        this.fieldAccessBase = fieldAccessBase;
+        this.memberAccessQualifier = memberAccessQualifier;
+        this.memberAccessBase = memberAccessBase;
     }
 
     static EarlyConstructionContext forConstructor(ClassSymbol owner,
@@ -91,13 +91,13 @@ class EarlyConstructionContext {
                 new EarlyConstructionContext(owner, onlyWarnings, true, ctorPrologue, initializer, false, null);
     }
 
-    EarlyConstructionContext fieldAccessQualifier() {
+    EarlyConstructionContext memberAccessQualifier() {
         return owner == null ?
                 this :
                 new EarlyConstructionContext(owner, onlyWarnings, restricted, ctorPrologue, initializer, true, null);
     }
 
-    EarlyConstructionContext fieldAccess(JCExpression base) {
+    EarlyConstructionContext memberAccess(JCExpression base) {
         return owner == null ?
                 this :
                 new EarlyConstructionContext(owner, onlyWarnings, restricted, ctorPrologue, initializer, false, base);
@@ -116,12 +116,12 @@ class EarlyConstructionContext {
         return owner != null;
     }
 
-    boolean isFieldAccessQualifier() {
-        return fieldAccessQualifier;
+    boolean isMemberAccessQualifier() {
+        return memberAccessQualifier;
     }
 
-    JCExpression fieldAccessBase() {
-        return fieldAccessBase;
+    JCExpression memberAccessBase() {
+        return memberAccessBase;
     }
 
     boolean shouldRecordFieldReads() {

@@ -971,6 +971,7 @@ public class Attr extends JCTree.Visitor {
                         argumentAttr.withLocalCacheContext() : null);
         EarlyConstructionContext earlyConstructionPrev = env.info.earlyConstruction;
         try {
+            env.info.earlyConstruction = earlyConstructionPrev.nested();
             // Local and anonymous classes have not been entered yet, so we need to
             // do it now.
             if (env.info.scope.owner.kind.matches(KindSelector.VAL_MTH)) {
@@ -4459,18 +4460,15 @@ public class Attr extends JCTree.Visitor {
         // Attribute the qualifier expression, and determine its symbol (if any).
         Type site;
         EarlyConstructionContext earlyConstructionPrev = env.info.earlyConstruction;
-        boolean fieldAccessCandidate = false;
+        boolean memberAccessCandidate = false;
         try {
-            boolean methodSelect = env.tree.hasTag(APPLY) &&
-                    ((JCMethodInvocation)env.tree).meth == tree;
-            fieldAccessCandidate = !methodSelect &&
-                    tree.name != names._this &&
+            memberAccessCandidate = tree.name != names._this &&
                     tree.name != names._super &&
                     tree.name != names._class &&
                     (TreeInfo.isThisOrSelectorDotThis(tree.selected) ||
                     TreeInfo.isSuperOrSelectorDotSuper(tree.selected));
-            if (fieldAccessCandidate) {
-                env.info.earlyConstruction = earlyConstructionPrev.fieldAccessQualifier();
+            if (memberAccessCandidate) {
+                env.info.earlyConstruction = earlyConstructionPrev.memberAccessQualifier();
             }
             site = attribTree(tree.selected, env, new ResultInfo(skind, Type.noType));
         } finally {
@@ -4507,8 +4505,8 @@ public class Attr extends JCTree.Visitor {
         Symbol sym;
         earlyConstructionPrev = env.info.earlyConstruction;
         try {
-            if (fieldAccessCandidate) {
-                env.info.earlyConstruction = earlyConstructionPrev.fieldAccess(tree.selected);
+            if (memberAccessCandidate) {
+                env.info.earlyConstruction = earlyConstructionPrev.memberAccess(tree.selected);
             }
             sym = selectSym(tree, sitesym, site, env, resultInfo);
             if (sym.kind == VAR && sym.name != names._super && env.info.defaultSuperCallSite != null) {

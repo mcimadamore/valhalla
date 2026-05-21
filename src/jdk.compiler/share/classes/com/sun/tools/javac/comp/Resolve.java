@@ -1536,12 +1536,12 @@ public class Resolve {
                 if (sym.kind == VAR &&
                         sym.owner.kind == TYP &&
                         (sym.flags() & STATIC) == 0) {
-                    if (staticOnly)
-                        return new StaticError(sym);
                     Symbol earlySym = earlyFieldAccessResult(pos, env1, null, (VarSymbol)sym, writeOnlyTarget);
                     if (earlySym != sym) {
                         return earlySym;
                     }
+                    if (staticOnly)
+                        return new StaticError(sym);
                 }
                 return sym;
             } else {
@@ -2055,7 +2055,7 @@ public class Resolve {
                                     !env1.info.attributionMode.isSpeculative &&
                                     env1.enclClass.sym == context.owner &&
                                     sym.isMemberOf(context.owner, types)) {
-                                return earlyReferenceResult(env.tree, context, sym);
+                                return earlyReferenceResult(methodInvocationTarget(env), context, sym);
                             }
                         }
                     }
@@ -2105,6 +2105,12 @@ public class Resolve {
             }
         }
         return bestSoFar;
+    }
+
+    private DiagnosticPosition methodInvocationTarget(Env<AttrContext> env) {
+        return env.tree.hasTag(APPLY) ?
+                ((JCMethodInvocation)env.tree).meth :
+                env.tree;
     }
 
     /** Load toplevel or member class with given fully qualified name and
@@ -2562,11 +2568,10 @@ public class Resolve {
                            Name name, KindSelector kind) {
         try {
             Symbol sym = findIdentInTypeInternal(env, site, name, kind);
-            JCTree base = env.info.earlyConstruction.fieldAccessBase();
+            JCTree base = env.info.earlyConstruction.memberAccessBase();
             if (base != null &&
                     sym.kind == VAR &&
-                    sym.owner.kind == TYP &&
-                    (sym.flags() & STATIC) == 0) {
+                    sym.owner.kind == TYP) {
                 sym = earlyFieldAccessResult(pos, env, base, (VarSymbol)sym, isWriteOnlyTarget(kind));
             }
             return checkNonExistentType(checkRestrictedType(pos, sym, name));
@@ -2866,6 +2871,11 @@ public class Resolve {
                         env.info.pendingResolutionPhase = BASIC;
                         return findPolymorphicSignatureInstance(env, sym, argtypes);
                     }
+                    Symbol earlySym = earlyMethodAccessResult(pos, env, msym);
+                    if (earlySym.kind.isResolutionError()) {
+                        return accessMethod(earlySym, pos, location, site, name, true, argtypes, typeargtypes);
+                    }
+                    sym = earlySym;
                 }
                 return sym;
             }
@@ -3848,9 +3858,9 @@ public class Resolve {
                             !env1.info.attributionMode.isSpeculative &&
                             sym.owner == env1.info.earlyConstruction.owner &&
                             c == env1.info.earlyConstruction.owner &&
-                            earlyReferenceIsError(pos, env1.info.earlyConstruction, sym)) {
+                            earlyReferenceIsError(pos, env1.info.earlyConstruction, c)) {
                         // early construction context, stop search
-                        return new RefBeforeCtorCalledError(sym);
+                        return new RefBeforeCtorCalledError(c);
                     } else {
                         // found it
                         return sym;
@@ -3918,7 +3928,7 @@ public class Resolve {
                         if (context.isActive() &&
                                 !env1.info.attributionMode.isSpeculative &&
                                 sym.owner == context.owner &&
-                                !env.info.earlyConstruction.isFieldAccessQualifier() &&
+                                !env.info.earlyConstruction.isMemberAccessQualifier() &&
                                 !isReceiverParameter(env, tree)) {
                             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
                             if (earlyReferenceIsError(pos, context, sym)) {
@@ -3940,7 +3950,9 @@ public class Resolve {
             for (Type t : pruneInterfaces(env.enclClass.type)) {
                 if (t.tsym == c) {
                     EarlyConstructionContext context = env.info.earlyConstruction;
-                    if (context.isActive() && !env.info.attributionMode.isSpeculative) {
+                    if (context.isActive() &&
+                            !env.info.attributionMode.isSpeculative &&
+                            !context.isMemberAccessQualifier()) {
                         preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
                         logEarlyReference(pos, context, name);
                     }
@@ -3962,6 +3974,21 @@ public class Resolve {
         }
         log.error(pos, Errors.NotEnclClass(c));
         return syms.errSymbol;
+    }
+
+    private Symbol earlyMethodAccessResult(DiagnosticPosition pos, Env<AttrContext> env, MethodSymbol method) {
+        EarlyConstructionContext context = env.info.earlyConstruction;
+        JCTree base = context.memberAccessBase();
+        if (!context.isActive() ||
+                env.info.attributionMode.isSpeculative ||
+                base == null ||
+                method.owner.kind != TYP ||
+                !method.isMemberOf(context.owner, types) ||
+                !TreeInfo.isExplicitThisReference(types, (ClassType)context.owner.type, base)) {
+            return method;
+        }
+        preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
+        return earlyReferenceResult(pos, context, method);
     }
     //where
     private boolean isReceiverParameter(Env<AttrContext> env, JCFieldAccess tree) {
@@ -3996,13 +4023,17 @@ public class Resolve {
             if (field.owner != context.owner) {
                 return field;
             }
-            if (context.isFieldAccessQualifier()) {
+            if (context.isMemberAccessQualifier()) {
                 return field;
             }
             return earlyReferenceResult(pos, context, field);
         }
         if (!isEarlyReference(env, base, field)) {
             return field;
+        }
+        if ((field.flags() & STATIC) != 0) {
+            preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
+            return earlyReferenceResult(pos, context, field);
         }
         if (writeOnlyTarget) {
             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
@@ -4019,17 +4050,19 @@ public class Resolve {
     boolean isEarlyReference(Env<AttrContext> env, JCTree base, VarSymbol field) {
         EarlyConstructionContext context = env.info.earlyConstruction;
         if (!context.isActive() ||
-                (field.flags() & STATIC) != 0 ||
                 !field.isMemberOf(context.owner, types)) {
             return false;
+        }
+        if ((field.flags() & STATIC) != 0) {
+            return base != null &&
+                    TreeInfo.isExplicitThisReference(types, (ClassType)context.owner.type, base);
         }
         if (base == null &&
                 env.enclClass.sym != context.owner &&
                 field.isMemberOf(env.enclClass.sym, types)) {
             return false;
         }
-        return base == null || TreeInfo.isThisOrSelectorDotThis(base) ||
-                TreeInfo.isSuperOrSelectorDotSuper(base) ||
+        return base == null ||
                 TreeInfo.isExplicitThisReference(types, (ClassType)context.owner.type, base);
     }
 
