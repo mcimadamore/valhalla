@@ -124,7 +124,6 @@ public class Attr extends JCTree.Visitor {
     final ArgumentAttr argumentAttr;
     final MatchBindingsComputer matchBindingsComputer;
     final AttrRecover attrRecover;
-    final LocalProxyVarsGen localProxyVarsGen;
     final boolean captureMRefReturnType;
 
     public static Attr instance(Context context) {
@@ -165,8 +164,6 @@ public class Attr extends JCTree.Visitor {
         argumentAttr = ArgumentAttr.instance(context);
         matchBindingsComputer = MatchBindingsComputer.instance(context);
         attrRecover = AttrRecover.instance(context);
-        localProxyVarsGen = LocalProxyVarsGen.instance(context);
-
         Options options = Options.instance(context);
 
         Source source = Source.instance(context);
@@ -188,7 +185,6 @@ public class Attr extends JCTree.Visitor {
         unknownTypeExprInfo = new ResultInfo(KindSelector.VAL_TYP, Type.noType);
         recoveryInfo = new RecoveryInfo(deferredAttr.emptyDeferredAttrContext);
         initBlockType = new MethodType(List.nil(), syms.voidType, List.nil(), syms.methodClass);
-        allowFlexibleConstructors = Feature.FLEXIBLE_CONSTRUCTORS.allowedInSource(source);
         allowValueClasses = (!preview.isPreview(Feature.VALUE_CLASSES) || preview.isEnabled()) &&
                 Feature.VALUE_CLASSES.allowedInSource(source);
     }
@@ -208,10 +204,6 @@ public class Attr extends JCTree.Visitor {
     /** Are unconditional patterns in instanceof allowed
      */
     private final boolean allowUnconditionalPatternsInstanceOf;
-
-    /** Are flexible constructors allowed
-     */
-    private final boolean allowFlexibleConstructors;
 
     /** Are value classes allowed
      */
@@ -310,7 +302,9 @@ public class Attr extends JCTree.Visitor {
     void checkAssignable(DiagnosticPosition pos, VarSymbol v, JCTree base, Env<AttrContext> env) {
         if (v.name == names._this) {
             log.error(pos, Errors.CantAssignValToThis);
-        } else if ((v.flags() & FINAL) != 0 &&
+            return;
+        }
+        if ((v.flags() & FINAL) != 0 &&
             ((v.flags() & HASINIT) != 0
              ||
              !((base == null ||
@@ -321,9 +315,30 @@ public class Attr extends JCTree.Visitor {
             } else {
                 log.error(pos, Errors.CantAssignValToVar(Flags.toSource(v.flags() & (STATIC | FINAL)), v));
             }
+            return;
         }
-        if (env.tree instanceof JCAssign) {
-            env.info.earlyConstruction.checkFieldAssignment(pos, env, base, v);
+
+        if (rs.isEarlyReference(env, base, v)) {
+            EarlyConstructionContext context = env.info.earlyConstruction;
+            preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
+
+            if (context.restricted || v.owner != context.owner) {
+                if (context.onlyWarnings) {
+                    log.warning(pos, LintWarnings.WouldNotBeAllowedInPrologue(v));
+                } else {
+                    log.error(pos, Errors.CantRefBeforeCtorCalled(v));
+                }
+                return;
+            }
+
+            if ((v.flags_field & HASINIT) != 0) {
+                if (context.onlyWarnings) {
+                    log.warning(pos, LintWarnings.WouldNotBeAllowedInPrologue(v));
+                } else {
+                    log.error(pos, Errors.CantAssignInitializedBeforeCtorCalled(v));
+                }
+                return;
+            }
         }
     }
 
@@ -1249,11 +1264,7 @@ public class Attr extends JCTree.Visitor {
                 localEnv.info.earlyConstruction = isConstructor && owner.type != syms.objectType ?
                         EarlyConstructionContext.forConstructor(owner,
                                 addedSuperInIdentityClass && allowValueClasses,
-                                hasThisConstructorCall,
-                                methodEarlyConstruction,
-                                names, types, preview, log, localProxyVarsGen,
-                                allowFlexibleConstructors,
-                                allowValueClasses) :
+                                hasThisConstructorCall) :
                         methodEarlyConstruction;
 
                 // Attribute method body.
@@ -1334,8 +1345,6 @@ public class Attr extends JCTree.Visitor {
                     try {
                         initEnv.info.earlyConstruction = EarlyConstructionContext.forFieldInitializer(v,
                                 previousEarlyConstruction,
-                                names, types, preview, log, localProxyVarsGen,
-                                allowFlexibleConstructors,
                                 allowValueClasses);
                         attribExpr(tree.init, initEnv, v.type);
                         if (tree.isImplicitlyTyped()) {
@@ -2840,7 +2849,6 @@ public class Attr extends JCTree.Visitor {
                 } else if (clazztype.tsym.isStatic()) {
                     log.error(tree.encl.pos(), Errors.QualifiedNewOfStaticClass(clazztype.tsym));
                 }
-                env.info.earlyConstruction.checkInnerClassCreation(tree.pos(), env, clazztype);
             }
         } else {
             // Check for the existence of an apropos outer instance
@@ -4411,13 +4419,6 @@ public class Attr extends JCTree.Visitor {
             // that the variable is assignable in the current environment.
             if (KindSelector.ASG.subset(pkind()))
                 checkAssignable(tree.pos(), v, null, env);
-            if (v.name == names._this || v.name == names._super) {
-                env.info.earlyConstruction.checkExplicitThis(tree.pos(), env, tree, v);
-            } else if (!env.info.earlyConstruction.isWriteOnlyAssignment(env, tree)) {
-                env.info.earlyConstruction.checkFieldAccess(tree.pos(), env, null, v);
-            }
-        } else if (sym.kind == MTH) {
-            env.info.earlyConstruction.checkInstanceMemberUse(tree.pos(), env, null, sym);
         }
 
         Env<AttrContext> env1 = env;
@@ -4456,10 +4457,18 @@ public class Attr extends JCTree.Visitor {
         // Attribute the qualifier expression, and determine its symbol (if any).
         Type site;
         EarlyConstructionContext earlyConstructionPrev = env.info.earlyConstruction;
+        boolean fieldAccessCandidate = false;
         try {
-            if (TreeInfo.isThisOrSelectorDotThis(tree.selected) ||
-                    TreeInfo.isSuperOrSelectorDotSuper(tree.selected)) {
-                env.info.earlyConstruction = earlyConstructionPrev.receiverQualifier();
+            boolean methodSelect = env.tree.hasTag(APPLY) &&
+                    ((JCMethodInvocation)env.tree).meth == tree;
+            fieldAccessCandidate = !methodSelect &&
+                    tree.name != names._this &&
+                    tree.name != names._super &&
+                    tree.name != names._class &&
+                    (TreeInfo.isThisOrSelectorDotThis(tree.selected) ||
+                    TreeInfo.isSuperOrSelectorDotSuper(tree.selected));
+            if (fieldAccessCandidate) {
+                env.info.earlyConstruction = earlyConstructionPrev.fieldAccessQualifier();
             }
             site = attribTree(tree.selected, env, new ResultInfo(skind, Type.noType));
         } finally {
@@ -4493,14 +4502,23 @@ public class Attr extends JCTree.Visitor {
 
         // Determine the symbol represented by the selection.
         env.info.pendingResolutionPhase = null;
-        Symbol sym = selectSym(tree, sitesym, site, env, resultInfo);
-        if (sym.kind == VAR && sym.name != names._super && env.info.defaultSuperCallSite != null) {
-            log.error(tree.selected.pos(), Errors.NotEnclClass(site.tsym));
-            sym = syms.errSymbol;
-        }
-        if (sym.exists() && !isType(sym) && pkind().contains(KindSelector.TYP_PCK)) {
-            site = capture(site);
+        Symbol sym;
+        earlyConstructionPrev = env.info.earlyConstruction;
+        try {
+            if (fieldAccessCandidate) {
+                env.info.earlyConstruction = earlyConstructionPrev.fieldAccess(tree.selected);
+            }
             sym = selectSym(tree, sitesym, site, env, resultInfo);
+            if (sym.kind == VAR && sym.name != names._super && env.info.defaultSuperCallSite != null) {
+                log.error(tree.selected.pos(), Errors.NotEnclClass(site.tsym));
+                sym = syms.errSymbol;
+            }
+            if (sym.exists() && !isType(sym) && pkind().contains(KindSelector.TYP_PCK)) {
+                site = capture(site);
+                sym = selectSym(tree, sitesym, site, env, resultInfo);
+            }
+        } finally {
+            env.info.earlyConstruction = earlyConstructionPrev;
         }
         boolean varArgs = env.info.lastResolveVarargs();
         tree.sym = sym;
@@ -4522,11 +4540,6 @@ public class Attr extends JCTree.Visitor {
             if (KindSelector.ASG.subset(pkind())) {
                 checkAssignable(tree.pos(), v, tree.selected, env);
             }
-            if (!env.info.earlyConstruction.isWriteOnlyAssignment(env, tree)) {
-                env.info.earlyConstruction.checkFieldAccess(tree.pos(), env, tree.selected, v);
-            }
-        } else if (sym.kind == MTH) {
-            env.info.earlyConstruction.checkInstanceMemberUse(tree.pos(), env, tree.selected, sym);
         }
 
         if (sitesym != null &&

@@ -67,7 +67,6 @@ public class MemberEnter extends JCTree.Visitor {
     private final Types types;
     private final Names names;
     private final Preview preview;
-    private final LocalProxyVarsGen localProxyVarsGen;
     private final boolean allowValueClasses;
 
     public static MemberEnter instance(Context context) {
@@ -90,7 +89,6 @@ public class MemberEnter extends JCTree.Visitor {
         source = Source.instance(context);
         names = Names.instance(context);
         preview = Preview.instance(context);
-        localProxyVarsGen = LocalProxyVarsGen.instance(context);
         allowValueClasses = (!preview.isPreview(Feature.VALUE_CLASSES) || preview.isEnabled()) &&
                 Feature.VALUE_CLASSES.allowedInSource(source);
     }
@@ -302,8 +300,7 @@ public class MemberEnter extends JCTree.Visitor {
                 initEnv.info.enclVar = v;
                 initEnv = initEnv(tree, initEnv);
                 initEnv.info.earlyConstruction = EarlyConstructionContext.forFieldInitializer(v,
-                        initEnv.info.earlyConstruction, names, types, preview, log, localProxyVarsGen,
-                        Feature.FLEXIBLE_CONSTRUCTORS.allowedInSource(source),
+                        initEnv.info.earlyConstruction,
                         allowValueClasses);
                 v.setLazyConstValue(initEnv(tree, initEnv), env, attr, tree);
             }

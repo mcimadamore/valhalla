@@ -43,6 +43,7 @@ import com.sun.tools.javac.jvm.*;
 import com.sun.tools.javac.main.Option;
 import com.sun.tools.javac.resources.CompilerProperties.Errors;
 import com.sun.tools.javac.resources.CompilerProperties.Fragments;
+import com.sun.tools.javac.resources.CompilerProperties.LintWarnings;
 import com.sun.tools.javac.resources.CompilerProperties.Warnings;
 import com.sun.tools.javac.tree.*;
 import com.sun.tools.javac.tree.JCTree.*;
@@ -1537,6 +1538,10 @@ public class Resolve {
                         (sym.flags() & STATIC) == 0) {
                     if (staticOnly)
                         return new StaticError(sym);
+                    Symbol earlySym = earlyFieldAccessResult(pos, env1, null, (VarSymbol)sym);
+                    if (earlySym != sym) {
+                        return earlySym;
+                    }
                 }
                 return sym;
             } else {
@@ -2044,6 +2049,14 @@ public class Resolve {
                             (sym.flags() & STATIC) == 0) {
                         if (staticOnly)
                             return new StaticError(sym);
+                        if (env1 == env) {
+                            EarlyConstructionContext context = env1.info.earlyConstruction;
+                            if (context.isActive() &&
+                                    !env1.info.attributionMode.isSpeculative &&
+                                    sym.isMemberOf(context.owner, types)) {
+                                return earlyReferenceResult(env.tree, context, sym);
+                            }
+                        }
                     }
                     return sym;
                 } else {
@@ -2547,7 +2560,15 @@ public class Resolve {
                            Env<AttrContext> env, Type site,
                            Name name, KindSelector kind) {
         try {
-            return checkNonExistentType(checkRestrictedType(pos, findIdentInTypeInternal(env, site, name, kind), name));
+            Symbol sym = findIdentInTypeInternal(env, site, name, kind);
+            JCTree base = env.info.earlyConstruction.fieldAccessBase();
+            if (base != null &&
+                    sym.kind == VAR &&
+                    sym.owner.kind == TYP &&
+                    (sym.flags() & STATIC) == 0) {
+                sym = earlyFieldAccessResult(pos, env, base, (VarSymbol)sym);
+            }
+            return checkNonExistentType(checkRestrictedType(pos, sym, name));
         } catch (ClassFinder.BadClassFile err) {
             return new BadClassFileError(err);
         } catch (CompletionFailure cf) {
@@ -3822,8 +3843,14 @@ public class Resolve {
                     if (staticOnly) {
                         // current class is not an inner class, stop search
                         return new StaticError(sym);
+                    } else if (env1.info.earlyConstruction.isActive() &&
+                            !env1.info.attributionMode.isSpeculative &&
+                            sym.owner == env1.info.earlyConstruction.owner &&
+                            c == env1.info.earlyConstruction.owner &&
+                            earlyReferenceIsError(pos, env1.info.earlyConstruction, sym)) {
+                        // early construction context, stop search
+                        return new RefBeforeCtorCalledError(sym);
                     } else {
-                        env.info.earlyConstruction.checkImplicitThis(pos, env, sym, c);
                         // found it
                         return sym;
                     }
@@ -3885,8 +3912,18 @@ public class Resolve {
                 if (sym != null) {
                     if (staticOnly)
                         sym = new StaticError(sym);
-                    else if (!isReceiverParameter(env, tree))
-                        env.info.earlyConstruction.checkExplicitThis(pos, env, tree, sym);
+                    else {
+                        EarlyConstructionContext context = env1.info.earlyConstruction;
+                        if (context.isActive() &&
+                                !env1.info.attributionMode.isSpeculative &&
+                                !env.info.earlyConstruction.isFieldAccessQualifier() &&
+                                !isReceiverParameter(env, tree)) {
+                            preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
+                            if (earlyReferenceIsError(pos, context, sym)) {
+                                sym = new RefBeforeCtorCalledError(sym);
+                            }
+                        }
+                    }
                     return accessBase(sym, pos, env.enclClass.sym.type,
                             name, true);
                 }
@@ -3900,7 +3937,11 @@ public class Resolve {
             //this might be a default super call if one of the superinterfaces is 'c'
             for (Type t : pruneInterfaces(env.enclClass.type)) {
                 if (t.tsym == c) {
-                    env.info.earlyConstruction.checkDefaultSuper(pos, env, name);
+                    EarlyConstructionContext context = env.info.earlyConstruction;
+                    if (context.isActive() && !env.info.attributionMode.isSpeculative) {
+                        preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
+                        logEarlyReference(pos, context, name);
+                    }
                     env.info.defaultSuperCallSite = t;
                     return new VarSymbol(0, names._super,
                             types.asSuper(env.enclClass.type, c), env.enclClass.sym);
@@ -3942,6 +3983,81 @@ public class Resolve {
             }
         }
         return result.toList();
+    }
+
+    private Symbol earlyFieldAccessResult(DiagnosticPosition pos, Env<AttrContext> env, JCTree base, VarSymbol field) {
+        EarlyConstructionContext context = env.info.earlyConstruction;
+        if (!context.isActive() || env.info.attributionMode.isSpeculative) {
+            return field;
+        }
+        if (field.name == names._this || field.name == names._super) {
+            if (context.isFieldAccessQualifier()) {
+                return field;
+            }
+            return earlyReferenceResult(pos, context, field);
+        }
+        if (!isEarlyReference(env, base, field)) {
+            return field;
+        }
+        if (env.tree instanceof JCAssign) {
+            preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
+            return field;
+        }
+        preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
+        if (context.allowsFieldRead(field)) {
+            recordEarlyFieldRead(env, field);
+            return field;
+        }
+        return earlyReferenceResult(pos, context, field);
+    }
+
+    boolean isEarlyReference(Env<AttrContext> env, JCTree base, VarSymbol field) {
+        EarlyConstructionContext context = env.info.earlyConstruction;
+        if (!context.isActive() ||
+                (field.flags() & STATIC) != 0 ||
+                !field.isMemberOf(context.owner, types)) {
+            return false;
+        }
+        if (base == null &&
+                env.enclClass.sym != context.owner &&
+                field.isMemberOf(env.enclClass.sym, types)) {
+            return false;
+        }
+        return base == null || TreeInfo.isThisOrSelectorDotThis(base) ||
+                TreeInfo.isSuperOrSelectorDotSuper(base) ||
+                TreeInfo.isExplicitThisReference(types, (ClassType)context.owner.type, base);
+    }
+
+    private void recordEarlyFieldRead(Env<AttrContext> env, VarSymbol field) {
+        if (env.info.earlyConstruction.shouldRecordFieldReads() &&
+                env.enclMethod != null &&
+                TreeInfo.isConstructor(env.enclMethod)) {
+            localProxyVarsGen.addFieldReadInPrologue(env.enclMethod, field);
+        }
+    }
+
+    private Symbol earlyReferenceResult(DiagnosticPosition pos, EarlyConstructionContext context, Symbol sym) {
+        if (context.onlyWarnings) {
+            log.warning(pos, LintWarnings.WouldNotBeAllowedInPrologue(sym));
+            return sym;
+        }
+        return new RefBeforeCtorCalledError(sym);
+    }
+
+    private boolean earlyReferenceIsError(DiagnosticPosition pos, EarlyConstructionContext context, Symbol sym) {
+        if (context.onlyWarnings) {
+            log.warning(pos, LintWarnings.WouldNotBeAllowedInPrologue(sym));
+            return false;
+        }
+        return true;
+    }
+
+    private void logEarlyReference(DiagnosticPosition pos, EarlyConstructionContext context, Name name) {
+        if (context.onlyWarnings) {
+            log.warning(pos, LintWarnings.WouldNotBeAllowedInPrologue(name));
+        } else {
+            log.error(pos, Errors.CantRefBeforeCtorCalled(name));
+        }
     }
 
 /* ***************************************************************************
