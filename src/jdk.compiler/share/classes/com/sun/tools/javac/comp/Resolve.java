@@ -1513,7 +1513,7 @@ public class Resolve {
      *  @param env     The current environment.
      *  @param name    The name of the variable or field.
      */
-    Symbol findVar(DiagnosticPosition pos, Env<AttrContext> env, Name name) {
+    Symbol findVar(DiagnosticPosition pos, Env<AttrContext> env, Name name, boolean writeOnlyTarget) {
         Symbol bestSoFar = varNotFound;
         Env<AttrContext> env1 = env;
         boolean staticOnly = false;
@@ -1538,7 +1538,7 @@ public class Resolve {
                         (sym.flags() & STATIC) == 0) {
                     if (staticOnly)
                         return new StaticError(sym);
-                    Symbol earlySym = earlyFieldAccessResult(pos, env1, null, (VarSymbol)sym);
+                    Symbol earlySym = earlyFieldAccessResult(pos, env1, null, (VarSymbol)sym, writeOnlyTarget);
                     if (earlySym != sym) {
                         return earlySym;
                     }
@@ -2496,7 +2496,7 @@ public class Resolve {
         Symbol sym;
 
         if (kind.contains(KindSelector.VAL)) {
-            sym = findVar(pos, env, name);
+            sym = findVar(pos, env, name, isWriteOnlyTarget(kind));
             if (sym.exists()) return sym;
             else bestSoFar = bestOf(bestSoFar, sym);
         }
@@ -2567,7 +2567,7 @@ public class Resolve {
                     sym.kind == VAR &&
                     sym.owner.kind == TYP &&
                     (sym.flags() & STATIC) == 0) {
-                sym = earlyFieldAccessResult(pos, env, base, (VarSymbol)sym);
+                sym = earlyFieldAccessResult(pos, env, base, (VarSymbol)sym, isWriteOnlyTarget(kind));
             }
             return checkNonExistentType(checkRestrictedType(pos, sym, name));
         } catch (ClassFinder.BadClassFile err) {
@@ -3987,7 +3987,7 @@ public class Resolve {
         return result.toList();
     }
 
-    private Symbol earlyFieldAccessResult(DiagnosticPosition pos, Env<AttrContext> env, JCTree base, VarSymbol field) {
+    private Symbol earlyFieldAccessResult(DiagnosticPosition pos, Env<AttrContext> env, JCTree base, VarSymbol field, boolean writeOnlyTarget) {
         EarlyConstructionContext context = env.info.earlyConstruction;
         if (!context.isActive() || env.info.attributionMode.isSpeculative) {
             return field;
@@ -4004,7 +4004,7 @@ public class Resolve {
         if (!isEarlyReference(env, base, field)) {
             return field;
         }
-        if (isWriteOnlyAssignment(env, base, field)) {
+        if (writeOnlyTarget) {
             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
             return field;
         }
@@ -4033,21 +4033,8 @@ public class Resolve {
                 TreeInfo.isExplicitThisReference(types, (ClassType)context.owner.type, base);
     }
 
-    private boolean isWriteOnlyAssignment(Env<AttrContext> env, JCTree base, VarSymbol field) {
-        if (!(env.tree instanceof JCAssign assign)) {
-            return false;
-        }
-        JCExpression lhs = TreeInfo.skipParens(assign.lhs);
-        return switch (lhs.getTag()) {
-            case IDENT -> base == null &&
-                    ((JCIdent)lhs).name == field.name;
-            case SELECT -> {
-                JCFieldAccess select = (JCFieldAccess)lhs;
-                yield select.name == field.name &&
-                        TreeInfo.skipParens(select.selected) == TreeInfo.skipParens(base);
-            }
-            default -> false;
-        };
+    private boolean isWriteOnlyTarget(KindSelector kind) {
+        return KindSelector.ASG.subset(kind) && !KindSelector.VAL.subset(kind);
     }
 
     private void recordEarlyFieldRead(Env<AttrContext> env, VarSymbol field) {

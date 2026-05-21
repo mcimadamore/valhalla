@@ -179,6 +179,7 @@ public class Attr extends JCTree.Visitor {
 
         statInfo = new ResultInfo(KindSelector.NIL, Type.noType);
         varAssignmentInfo = new ResultInfo(KindSelector.ASG, Type.noType);
+        varAssignmentWithReadInfo = new ResultInfo(KindSelector.of(KindSelector.VAL, KindSelector.ASG), Type.noType);
         unknownExprInfo = new ResultInfo(KindSelector.VAL, Type.noType);
         methodAttrInfo = new MethodAttrInfo();
         unknownTypeInfo = new ResultInfo(KindSelector.TYP, Type.noType);
@@ -639,6 +640,7 @@ public class Attr extends JCTree.Visitor {
 
     final ResultInfo statInfo;
     final ResultInfo varAssignmentInfo;
+    final ResultInfo varAssignmentWithReadInfo;
     final ResultInfo methodAttrInfo;
     final ResultInfo unknownExprInfo;
     final ResultInfo unknownTypeInfo;
@@ -4035,7 +4037,7 @@ public class Attr extends JCTree.Visitor {
 
     public void visitAssignop(JCAssignOp tree) {
         // Attribute arguments.
-        Type owntype = attribTree(tree.lhs, env, varAssignmentInfo);
+        Type owntype = attribTree(tree.lhs, env, varAssignmentWithReadInfo);
         Type operand = attribExpr(tree.rhs, env);
         // Find operator.
         Symbol operator = tree.operator = operators.resolveBinary(tree, tree.getTag().noAssignOp(), owntype, operand);
@@ -4058,7 +4060,7 @@ public class Attr extends JCTree.Visitor {
     public void visitUnary(JCUnary tree) {
         // Attribute arguments.
         Type argtype = (tree.getTag().isIncOrDecUnaryOp())
-            ? attribTree(tree.arg, env, varAssignmentInfo)
+            ? attribTree(tree.arg, env, varAssignmentWithReadInfo)
             : chk.checkNonVoid(tree.arg.pos(), attribExpr(tree.arg, env));
 
         // Find operator.
