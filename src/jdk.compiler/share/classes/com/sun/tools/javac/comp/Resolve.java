@@ -3823,6 +3823,7 @@ public class Resolve {
                         // current class is not an inner class, stop search
                         return new StaticError(sym);
                     } else {
+                        env.info.earlyConstruction.checkImplicitThis(pos, env, sym, c);
                         // found it
                         return sym;
                     }
@@ -3884,6 +3885,8 @@ public class Resolve {
                 if (sym != null) {
                     if (staticOnly)
                         sym = new StaticError(sym);
+                    else if (!isReceiverParameter(env, tree))
+                        env.info.earlyConstruction.checkExplicitThis(pos, env, tree, sym);
                     return accessBase(sym, pos, env.enclClass.sym.type,
                             name, true);
                 }
@@ -3897,6 +3900,7 @@ public class Resolve {
             //this might be a default super call if one of the superinterfaces is 'c'
             for (Type t : pruneInterfaces(env.enclClass.type)) {
                 if (t.tsym == c) {
+                    env.info.earlyConstruction.checkDefaultSuper(pos, env, name);
                     env.info.defaultSuperCallSite = t;
                     return new VarSymbol(0, names._super,
                             types.asSuper(env.enclClass.type, c), env.enclClass.sym);
@@ -3917,6 +3921,13 @@ public class Resolve {
         return syms.errSymbol;
     }
     //where
+    private boolean isReceiverParameter(Env<AttrContext> env, JCFieldAccess tree) {
+        if (env.tree.getTag() != METHODDEF)
+            return false;
+        JCMethodDecl method = (JCMethodDecl)env.tree;
+        return method.recvparam != null && tree == method.recvparam.nameexpr;
+    }
+
     private List<Type> pruneInterfaces(Type t) {
         ListBuffer<Type> result = new ListBuffer<>();
         for (Type t1 : types.interfaces(t)) {

@@ -49,9 +49,9 @@ public class AttrContext {
      */
     int staticLevel = 0;
 
-    /** Are we in the 'prologue' part of a constructor, prior to an explicit this()/super()?
+    /** Early construction state.
      */
-    boolean ctorPrologue = false;
+    EarlyConstructionContext earlyConstruction = EarlyConstructionContext.NONE;
 
     /** Are we evaluating the selector of a `super' or type name?
      */
@@ -138,7 +138,7 @@ public class AttrContext {
         AttrContext info = new AttrContext();
         info.scope = scope;
         info.staticLevel = staticLevel;
-        info.ctorPrologue = ctorPrologue;
+        info.earlyConstruction = earlyConstruction;
         info.selectSuper = selectSuper;
         info.pendingResolutionPhase = pendingResolutionPhase;
         info.lint = lint;

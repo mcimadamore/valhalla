@@ -66,6 +66,9 @@ public class MemberEnter extends JCTree.Visitor {
     private final Annotate annotate;
     private final Types types;
     private final Names names;
+    private final Preview preview;
+    private final LocalProxyVarsGen localProxyVarsGen;
+    private final boolean allowValueClasses;
 
     public static MemberEnter instance(Context context) {
         MemberEnter instance = context.get(memberEnterKey);
@@ -86,6 +89,10 @@ public class MemberEnter extends JCTree.Visitor {
         types = Types.instance(context);
         source = Source.instance(context);
         names = Names.instance(context);
+        preview = Preview.instance(context);
+        localProxyVarsGen = LocalProxyVarsGen.instance(context);
+        allowValueClasses = (!preview.isPreview(Feature.VALUE_CLASSES) || preview.isEnabled()) &&
+                Feature.VALUE_CLASSES.allowedInSource(source);
     }
 
     /** Construct method type from method signature.
@@ -294,7 +301,10 @@ public class MemberEnter extends JCTree.Visitor {
                 Env<AttrContext> initEnv = getInitEnv(tree, env);
                 initEnv.info.enclVar = v;
                 initEnv = initEnv(tree, initEnv);
-                initEnv.info.ctorPrologue = (v.owner.kind == TYP && v.owner.isValueClass() && !v.isStatic());
+                initEnv.info.earlyConstruction = EarlyConstructionContext.forFieldInitializer(v,
+                        initEnv.info.earlyConstruction, names, types, preview, log, localProxyVarsGen,
+                        Feature.FLEXIBLE_CONSTRUCTORS.allowedInSource(source),
+                        allowValueClasses);
                 v.setLazyConstValue(initEnv(tree, initEnv), env, attr, tree);
             }
         }
