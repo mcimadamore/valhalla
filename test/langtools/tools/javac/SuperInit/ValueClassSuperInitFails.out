@@ -8,12 +8,12 @@ ValueClassSuperInitFails.java:114:14: compiler.err.cant.ref.before.ctor.called: 
 ValueClassSuperInitFails.java:118:20: compiler.err.not.encl.class: java.lang.Object
 ValueClassSuperInitFails.java:122:17: compiler.err.cant.ref.before.ctor.called: super
 ValueClassSuperInitFails.java:129:22: compiler.err.call.must.only.appear.in.ctor
-ValueClassSuperInitFails.java:135:9: compiler.err.cant.ref.before.ctor.called: ValueClassSuperInitFails
+ValueClassSuperInitFails.java:135:9: compiler.err.cant.ref.before.ctor.called: this
 ValueClassSuperInitFails.java:143:9: compiler.err.non.canonical.constructor.invoke.another.constructor: ValueClassSuperInitFails.Record1
 ValueClassSuperInitFails.java:148:9: compiler.err.non.canonical.constructor.invoke.another.constructor: ValueClassSuperInitFails.Record2
 ValueClassSuperInitFails.java:161:41: compiler.err.cant.ref.before.ctor.called: this
 ValueClassSuperInitFails.java:175:49: compiler.err.cant.ref.before.ctor.called: x
-ValueClassSuperInitFails.java:179:15: compiler.err.cant.ref.before.ctor.called: ValueClassSuperInitFails
+ValueClassSuperInitFails.java:179:15: compiler.err.cant.ref.before.ctor.called: this
 ValueClassSuperInitFails.java:183:13: compiler.err.cant.ref.before.ctor.called: b
 ValueClassSuperInitFails.java:184:19: compiler.err.cant.ref.before.ctor.called: b
 ValueClassSuperInitFails.java:43:13: compiler.err.call.must.only.appear.in.ctor

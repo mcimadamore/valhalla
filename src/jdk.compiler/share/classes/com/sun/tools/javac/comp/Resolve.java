@@ -3857,7 +3857,7 @@ public class Resolve {
                     } else if (env1.info.earlyConstruction.isActive() &&
                             !env1.info.attributionMode.isSpeculative &&
                             env1.enclClass.sym == env1.info.earlyConstruction.owner &&
-                            earlyReferenceIsError(pos, env1.info.earlyConstruction, c)) {
+                            earlyReferenceIsError(pos, env1.info.earlyConstruction, sym)) {
                         return new RefBeforeCtorCalledError(sym);
                     } else {
                         // found it
