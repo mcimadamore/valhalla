@@ -2869,11 +2869,6 @@ public class Resolve {
                         env.info.pendingResolutionPhase = BASIC;
                         return findPolymorphicSignatureInstance(env, sym, argtypes);
                     }
-                    Symbol earlySym = earlyMethodAccessResult(pos, env, msym);
-                    if (earlySym.kind.isResolutionError()) {
-                        return accessMethod(earlySym, pos, location, site, name, true, argtypes, typeargtypes);
-                    }
-                    sym = earlySym;
                 }
                 return sym;
             }
@@ -3967,19 +3962,6 @@ public class Resolve {
         return syms.errSymbol;
     }
 
-    private Symbol earlyMethodAccessResult(DiagnosticPosition pos, Env<AttrContext> env, MethodSymbol method) {
-        EarlyConstructionContext context = env.info.earlyConstruction;
-        JCTree base = context.fieldAccessBase();
-        if (base == null ||
-                method.owner.kind != TYP ||
-                !method.isMemberOf(context.owner, types) ||
-                !TreeInfo.isExplicitThisReference(types, (ClassType)context.owner.type, base)) {
-            return method;
-        }
-        preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
-        return earlyReferenceResult(pos, context, method);
-    }
-    //where
     private boolean isReceiverParameter(Env<AttrContext> env, JCFieldAccess tree) {
         if (env.tree.getTag() != METHODDEF)
             return false;
