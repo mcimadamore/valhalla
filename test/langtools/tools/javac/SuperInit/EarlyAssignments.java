@@ -178,7 +178,7 @@ public class EarlyAssignments {
         int x = 1;
         int y;
         Inner9() {
-            y = x; // FAIL, x has an initializer
+            y = x; // FAIL, x has an initializer; no warning mode diagnostic, as this would be ok for a strict field
             super();
         }
     }

@@ -4515,7 +4515,9 @@ public class Attr extends JCTree.Visitor {
                 log.error(tree.selected.pos(), Errors.NotEnclClass(site.tsym));
                 sym = syms.errSymbol;
             }
-            if (sym.exists() && !isType(sym) && pkind().contains(KindSelector.TYP_PCK)) {
+            if (sym.exists() && !isType(sym) &&
+                    tree.name != names._this && tree.name != names._super &&
+                    pkind().contains(KindSelector.TYP_PCK)) {
                 site = capture(site);
                 sym = selectSym(tree, sitesym, site, env, resultInfo);
             }
