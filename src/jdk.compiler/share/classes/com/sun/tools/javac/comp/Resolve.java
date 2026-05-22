@@ -2051,9 +2051,7 @@ public class Resolve {
                             return new StaticError(sym);
                         if (env1 == env) {
                             EarlyConstructionContext context = env1.info.earlyConstruction;
-                            if (context.isActive() &&
-                                    !env1.info.attributionMode.isSpeculative &&
-                                    env1.enclClass.sym == context.owner &&
+                            if (env1.enclClass.sym == context.owner &&
                                     sym.isMemberOf(context.owner, types)) {
                                 return earlyReferenceResult(methodInvocationTarget(env), context, sym);
                             }
@@ -3854,9 +3852,7 @@ public class Resolve {
                     if (staticOnly) {
                         // current class is not an inner class, stop search
                         return new StaticError(sym);
-                    } else if (env1.info.earlyConstruction.isActive() &&
-                            !env1.info.attributionMode.isSpeculative &&
-                            env1.enclClass.sym == env1.info.earlyConstruction.owner &&
+                    } else if (env1.enclClass.sym == env1.info.earlyConstruction.owner &&
                             earlyReferenceIsError(pos, env1.info.earlyConstruction, sym)) {
                         return new RefBeforeCtorCalledError(sym);
                     } else {
@@ -3923,9 +3919,7 @@ public class Resolve {
                         sym = new StaticError(sym);
                     else {
                         EarlyConstructionContext context = env1.info.earlyConstruction;
-                        if (context.isActive() &&
-                                !env1.info.attributionMode.isSpeculative &&
-                                sym.owner == context.owner &&
+                        if (sym.owner == context.owner &&
                                 !env.info.earlyConstruction.isFieldAccessQualifier() &&
                                 !isReceiverParameter(env, tree)) {
                             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
@@ -3948,8 +3942,7 @@ public class Resolve {
             for (Type t : pruneInterfaces(env.enclClass.type)) {
                 if (t.tsym == c) {
                     EarlyConstructionContext context = env.info.earlyConstruction;
-                    if (context.isActive() &&
-                            !env.info.attributionMode.isSpeculative &&
+                    if (context != EarlyConstructionContext.NONE &&
                             !context.isFieldAccessQualifier()) {
                         preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
                         logEarlyReference(pos, context, name);
@@ -3977,9 +3970,7 @@ public class Resolve {
     private Symbol earlyMethodAccessResult(DiagnosticPosition pos, Env<AttrContext> env, MethodSymbol method) {
         EarlyConstructionContext context = env.info.earlyConstruction;
         JCTree base = context.fieldAccessBase();
-        if (!context.isActive() ||
-                env.info.attributionMode.isSpeculative ||
-                base == null ||
+        if (base == null ||
                 method.owner.kind != TYP ||
                 !method.isMemberOf(context.owner, types) ||
                 !TreeInfo.isExplicitThisReference(types, (ClassType)context.owner.type, base)) {
@@ -4014,9 +4005,6 @@ public class Resolve {
 
     private Symbol earlyFieldAccessResult(DiagnosticPosition pos, Env<AttrContext> env, JCTree base, VarSymbol field, boolean writeOnlyTarget) {
         EarlyConstructionContext context = env.info.earlyConstruction;
-        if (!context.isActive() || env.info.attributionMode.isSpeculative) {
-            return field;
-        }
         if (field.name == names._this || field.name == names._super) {
             if (field.owner != context.owner) {
                 return field;
@@ -4047,7 +4035,7 @@ public class Resolve {
 
     boolean isEarlyReference(Env<AttrContext> env, JCTree base, VarSymbol field) {
         EarlyConstructionContext context = env.info.earlyConstruction;
-        if (!context.isActive() ||
+        if (context == EarlyConstructionContext.NONE ||
                 !field.isMemberOf(context.owner, types)) {
             return false;
         }
@@ -4069,7 +4057,7 @@ public class Resolve {
     }
 
     private void recordEarlyFieldRead(Env<AttrContext> env, VarSymbol field) {
-        if (env.info.earlyConstruction.shouldRecordFieldReads() &&
+        if (env.info.earlyConstruction.shouldTrackEarlyReads() &&
                 env.enclMethod != null &&
                 TreeInfo.isConstructor(env.enclMethod)) {
             localProxyVarsGen.addFieldReadInPrologue(env.enclMethod, field);

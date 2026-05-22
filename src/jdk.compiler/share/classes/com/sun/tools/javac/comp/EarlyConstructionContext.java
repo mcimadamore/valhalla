@@ -112,10 +112,6 @@ class EarlyConstructionContext {
                 NONE;
     }
 
-    boolean isActive() {
-        return owner != null;
-    }
-
     boolean isFieldAccessQualifier() {
         return fieldAccessQualifier;
     }
@@ -124,7 +120,7 @@ class EarlyConstructionContext {
         return fieldAccessBase;
     }
 
-    boolean shouldRecordFieldReads() {
+    boolean shouldTrackEarlyReads() {
         return !onlyWarnings && ctorPrologue;
     }
 
@@ -132,7 +128,7 @@ class EarlyConstructionContext {
         return !restricted &&
                 field.owner == owner &&
                 (owner.isValueClass() ||
-                 onlyWarnings || // assume fields are strict
+                 onlyWarnings || // pretend fields are strict
                  (field.flags_field & HASINIT) == 0 ||
                  initializer);
     }
