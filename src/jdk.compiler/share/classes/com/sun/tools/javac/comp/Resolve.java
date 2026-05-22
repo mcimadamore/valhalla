@@ -3856,11 +3856,9 @@ public class Resolve {
                         return new StaticError(sym);
                     } else if (env1.info.earlyConstruction.isActive() &&
                             !env1.info.attributionMode.isSpeculative &&
-                            sym.owner == env1.info.earlyConstruction.owner &&
-                            c == env1.info.earlyConstruction.owner &&
+                            env1.enclClass.sym == env1.info.earlyConstruction.owner &&
                             earlyReferenceIsError(pos, env1.info.earlyConstruction, c)) {
-                        // early construction context, stop search
-                        return new RefBeforeCtorCalledError(c);
+                        return new RefBeforeCtorCalledError(sym);
                     } else {
                         // found it
                         return sym;

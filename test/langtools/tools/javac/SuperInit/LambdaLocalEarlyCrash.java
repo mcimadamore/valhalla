@@ -24,6 +24,8 @@
  * @test
  * @bug 8334037
  * @summary Test for compiler crash when local class created in early lambda
+ * @modules jdk.compiler/com.sun.tools.javac.tree
+ *          jdk.compiler/com.sun.tools.javac.util
  * @run main LambdaLocalEarlyCrash
  * @build InitializationWarningTester
  * @run main InitializationWarningTester LambdaLocalEarlyCrash

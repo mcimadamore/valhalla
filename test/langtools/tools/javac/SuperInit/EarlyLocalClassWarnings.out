@@ -1,1 +1,1 @@
-EarlyLocalClass.java:13:37: compiler.warn.would.not.be.allowed.in.prologue: hashCode()
+EarlyLocalClass.java:15:32: compiler.warn.would.not.be.allowed.in.prologue: this

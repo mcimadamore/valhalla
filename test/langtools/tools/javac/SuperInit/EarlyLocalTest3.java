@@ -24,6 +24,8 @@
  * @test
  * @bug 8333313
  * @summary Verify references to local classes declared in early construction contexts
+ * @modules jdk.compiler/com.sun.tools.javac.tree
+ *          jdk.compiler/com.sun.tools.javac.util
  * @run main EarlyLocalTest3
  * @build InitializationWarningTester
  * @run main InitializationWarningTester EarlyLocalTest3

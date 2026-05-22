@@ -22,60 +22,29 @@
  */
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
-import java.io.PrintWriter;
-import java.io.IOException;
+import java.io.StringWriter;
 
-import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.stream.Stream;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.charset.Charset;
 
-import javax.tools.Diagnostic;
-import javax.tools.DiagnosticListener;
 import javax.tools.JavaFileObject;
-import javax.tools.SimpleJavaFileObject;
+import javax.tools.JavaCompiler;
+import javax.tools.StandardJavaFileManager;
+import javax.tools.ToolProvider;
 
-import com.sun.tools.javac.code.Attribute;
-import com.sun.tools.javac.comp.Attr;
-import com.sun.tools.javac.comp.AttrContext;
-import com.sun.tools.javac.comp.CompileStates;
-import com.sun.tools.javac.comp.Env;
-import com.sun.tools.javac.comp.Modules;
-import com.sun.tools.javac.file.JavacFileManager;
-import com.sun.tools.javac.file.PathFileObject;
-import com.sun.tools.javac.main.JavaCompiler;
+import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.util.JavacTask;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.JCTree.*;
+import com.sun.tools.javac.tree.TreeTranslator;
 import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.util.Assert;
-import com.sun.tools.javac.util.Context;
-import com.sun.tools.javac.util.DiagnosticSource;
-import com.sun.tools.javac.util.JCDiagnostic;
-import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.ListBuffer;
-import com.sun.tools.javac.util.Log;
-import com.sun.tools.javac.util.Options;
 
 public class InitializationWarningTester {
-    Context context;
-    Options options;
-    MyJavaCompiler javaCompiler;
-    JavacFileManager javacFileManager;
-    PrintWriter errOut;
-    DiagnosticListener<JavaFileObject> diagnosticListener;
-
     public static void main(String... args) throws Throwable {
         String testSrc = System.getProperty("test.src");
         Path baseDir = Paths.get(testSrc);
@@ -89,37 +58,11 @@ public class InitializationWarningTester {
 
     java.util.List<String> compilationOutput = new ArrayList<>();
 
-    public InitializationWarningTester() {
-        context = new Context();
-        diagnosticListener = new DiagnosticListener<JavaFileObject>() {
-            public void report(Diagnostic<? extends JavaFileObject> message) {
-                JCDiagnostic diagnostic = (JCDiagnostic) message;
-                String msgData = ((PathFileObject)diagnostic.getDiagnosticSource().getFile()).getShortName() +
-                        ":" + diagnostic.getLineNumber() + ":" + diagnostic.getColumnNumber() + ": " + diagnostic.getCode();
-                if (diagnostic.getArgs() != null && diagnostic.getArgs().length > 0) {
-                    msgData += ": " + Arrays.stream(diagnostic.getArgs()).map(o -> o.toString())
-                            .collect(Collectors.joining(", "));
-                }
-                compilationOutput.add(msgData);
-            }
-        };
-        context.put(DiagnosticListener.class, diagnosticListener);
-        JavacFileManager.preRegister(context);
-        MyAttr.preRegister(context, this);
-        options = Options.instance(context);
-        options.put("--enable-preview", "--enable-preview");
-        options.put("--source", Integer.toString(Runtime.version().feature()));
-        options.put("-Xlint:initialization", "-Xlint:initialization");
-        javaCompiler = new MyJavaCompiler(context);
-        javacFileManager = new JavacFileManager(context, false, Charset.defaultCharset());
-    }
-
     void test(Path baseDir, String className, String warningsGoldenFileName) throws Throwable {
         Path javaFile = baseDir.resolve(className + ".java");
         Path goldenFile = warningsGoldenFileName != null ? baseDir.resolve(warningsGoldenFileName) : null;
 
-        // compile
-        javaCompiler.compile(com.sun.tools.javac.util.List.of(javacFileManager.getJavaFileObject(javaFile)));
+        compile(javaFile);
         if (goldenFile != null) {
             java.util.List<String> goldenFileContent = Files.readAllLines(goldenFile);
             if (goldenFileContent.size() != compilationOutput.size()) {
@@ -150,31 +93,41 @@ public class InitializationWarningTester {
         }
     }
 
-    static class MyJavaCompiler extends JavaCompiler {
-        MyJavaCompiler(Context context) {
-            super(context);
-            // do not generate code
-            this.shouldStopPolicyIfNoError = CompileStates.CompileState.LOWER;
+    void compile(Path javaFile) throws Throwable {
+        JavaCompiler javaCompiler = ToolProvider.getSystemJavaCompiler();
+        Assert.checkNonNull(javaCompiler);
+        StringWriter output = new StringWriter();
+        try (StandardJavaFileManager fileManager = javaCompiler.getStandardFileManager(
+                null, null, Charset.defaultCharset())) {
+            JavacTask task = (JavacTask) javaCompiler.getTask(output, fileManager, null,
+                    java.util.List.of("--enable-preview",
+                            "--source", Integer.toString(Runtime.version().feature()),
+                            "-Xlint:initialization",
+                            "-XDrawDiagnostics"),
+                    null,
+                    fileManager.getJavaFileObjects(javaFile));
+            for (CompilationUnitTree unit : task.parse()) {
+                new SuperCallRemover().translate((JCTree)unit);
+            }
+            task.analyze();
+        }
+        for (String line : output.toString().split("\\R")) {
+            if (!line.isEmpty() && !isSummaryLine(line)) {
+                compilationOutput.add(line);
+            }
         }
     }
 
-    static class MyAttr extends Attr {
-        InitializationWarningTester tester;
-        static void preRegister(Context context, InitializationWarningTester tester) {
-            context.put(attrKey, (com.sun.tools.javac.util.Context.Factory<Attr>) c -> new MyAttr(c, tester));
-        }
+    boolean isSummaryLine(String line) {
+        return line.matches("\\d+ (error|errors|warning|warnings)");
+    }
 
-        MyAttr(Context context, InitializationWarningTester tester) {
-            super(context);
-            this.tester = tester;
-        }
-
+    static class SuperCallRemover extends TreeTranslator {
         @Override
         public void visitMethodDef(JCMethodDecl tree) {
             if (TreeInfo.isConstructor(tree)) {
-                /* remove the super constructor call if it has no arguments, that way the Attr super class
-                 * will add a super() as the first statement in the constructor and will analyze the rest
-                 * of the code in warnings only mode
+                /* Remove no-arg super() calls, so javac attributes the constructor
+                 * as if it had an implicit super() at the start.
                  */
                 if (TreeInfo.hasAnyConstructorCall(tree)) {
                     ListBuffer<JCStatement> newStats = new ListBuffer<>();

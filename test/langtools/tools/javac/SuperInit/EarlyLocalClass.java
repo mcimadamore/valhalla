@@ -2,6 +2,8 @@
  * @test /nodynamiccopyright/
  * @bug 8325805
  * @summary Verify local class in early construction context has no outer instance
+ * @modules jdk.compiler/com.sun.tools.javac.tree
+ *          jdk.compiler/com.sun.tools.javac.util
  * @compile/fail/ref=EarlyLocalClass.out -XDrawDiagnostics EarlyLocalClass.java
  * @build InitializationWarningTester
  * @run main InitializationWarningTester EarlyLocalClass EarlyLocalClassWarnings.out

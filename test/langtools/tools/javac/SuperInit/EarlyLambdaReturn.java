@@ -24,6 +24,8 @@
  * @test
  * @bug 8345438
  * @summary Verify 'return' allowed in a lambda declared in an early construction context
+ * @modules jdk.compiler/com.sun.tools.javac.tree
+ *          jdk.compiler/com.sun.tools.javac.util
  * @run main EarlyLambdaReturn
  * @build InitializationWarningTester
  * @run main InitializationWarningTester EarlyLambdaReturn

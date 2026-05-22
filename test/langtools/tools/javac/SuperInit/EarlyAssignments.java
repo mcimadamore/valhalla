@@ -2,6 +2,8 @@
  * @test /nodynamiccopyright/
  * @bug 8325805
  * @summary Permit non-superclass instance field assignments before this/super in constructors
+ * @modules jdk.compiler/com.sun.tools.javac.tree
+ *          jdk.compiler/com.sun.tools.javac.util
  * @enablePreview
  * @compile/fail/ref=EarlyAssignments.out -XDrawDiagnostics EarlyAssignments.java
  * @build InitializationWarningTester

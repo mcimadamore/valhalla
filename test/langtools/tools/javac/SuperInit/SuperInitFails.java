@@ -2,6 +2,8 @@
  * @test /nodynamiccopyright/
  * @bug 8194743
  * @summary Permit additional statements before this/super in constructors
+ * @modules jdk.compiler/com.sun.tools.javac.tree
+ *          jdk.compiler/com.sun.tools.javac.util
  * @enablePreview
  * @compile/fail/ref=SuperInitFails.out -XDrawDiagnostics SuperInitFails.java
  * @build InitializationWarningTester

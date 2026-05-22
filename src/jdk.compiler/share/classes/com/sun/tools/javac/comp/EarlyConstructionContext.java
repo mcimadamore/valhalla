@@ -132,6 +132,7 @@ class EarlyConstructionContext {
         return !restricted &&
                 field.owner == owner &&
                 (owner.isValueClass() ||
+                 onlyWarnings || // assume fields are strict
                  (field.flags_field & HASINIT) == 0 ||
                  initializer);
     }

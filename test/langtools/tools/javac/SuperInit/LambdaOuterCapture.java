@@ -24,6 +24,8 @@
  * @test
  * @bug 8334252
  * @summary Test lambda declared in early construction context
+ * @modules jdk.compiler/com.sun.tools.javac.tree
+ *          jdk.compiler/com.sun.tools.javac.util
  * @run main LambdaOuterCapture
  * @build InitializationWarningTester
  * @run main InitializationWarningTester LambdaOuterCapture
