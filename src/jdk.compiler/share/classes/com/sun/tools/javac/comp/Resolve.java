@@ -2500,7 +2500,7 @@ public class Resolve {
         Symbol sym;
 
         if (kind.contains(KindSelector.VAL)) {
-            sym = findVar(pos, env, name, isWriteOnlyTarget(kind));
+            sym = findVar(pos, env, name, kind.isAssignment());
             if (sym.exists()) return sym;
             else bestSoFar = bestOf(bestSoFar, sym);
         }
@@ -2570,7 +2570,7 @@ public class Resolve {
             if (base != null &&
                     sym.kind == VAR &&
                     sym.owner.kind == TYP) {
-                sym = earlyFieldAccessResult(pos, env, base, (VarSymbol)sym, isWriteOnlyTarget(kind));
+                sym = earlyFieldAccessResult(pos, env, base, (VarSymbol)sym, kind.isAssignment());
             }
             return checkNonExistentType(checkRestrictedType(pos, sym, name));
         } catch (ClassFinder.BadClassFile err) {
@@ -3847,9 +3847,8 @@ public class Resolve {
                     if (staticOnly) {
                         // current class is not an inner class, stop search
                         return new StaticError(sym);
-                    } else if (env1.enclClass.sym == env1.info.earlyConstruction.owner &&
-                            earlyReferenceIsError(pos, env1.info.earlyConstruction, sym)) {
-                        return new RefBeforeCtorCalledError(sym);
+                    } else if (env1.enclClass.sym == env1.info.earlyConstruction.owner) {
+                        return earlyReferenceResult(pos, env1.info.earlyConstruction, sym);
                     } else {
                         // found it
                         return sym;
@@ -3918,9 +3917,7 @@ public class Resolve {
                                 !env.info.earlyConstruction.isFieldAccessQualifier() &&
                                 !isReceiverParameter(env, tree)) {
                             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
-                            if (earlyReferenceIsError(pos, context, sym)) {
-                                sym = new RefBeforeCtorCalledError(sym);
-                            }
+                            sym = earlyReferenceResult(pos, context, sym);
                         }
                     }
                     return accessBase(sym, pos, env.enclClass.sym.type,
@@ -4009,7 +4006,11 @@ public class Resolve {
         }
         preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
         if (context.allowsFieldRead(field)) {
-            recordEarlyFieldRead(env, field);
+            if (context.shouldTrackEarlyReads() &&
+                    env.enclMethod != null &&
+                    TreeInfo.isConstructor(env.enclMethod)) {
+                localProxyVarsGen.addFieldReadInPrologue(env.enclMethod, field);
+            }
             return field;
         }
         return earlyReferenceResult(pos, context, field);
@@ -4034,32 +4035,12 @@ public class Resolve {
                 TreeInfo.isExplicitThisReference(types, (ClassType)context.owner.type, base);
     }
 
-    private boolean isWriteOnlyTarget(KindSelector kind) {
-        return KindSelector.ASG.subset(kind) && !KindSelector.VAL.subset(kind);
-    }
-
-    private void recordEarlyFieldRead(Env<AttrContext> env, VarSymbol field) {
-        if (env.info.earlyConstruction.shouldTrackEarlyReads() &&
-                env.enclMethod != null &&
-                TreeInfo.isConstructor(env.enclMethod)) {
-            localProxyVarsGen.addFieldReadInPrologue(env.enclMethod, field);
-        }
-    }
-
     private Symbol earlyReferenceResult(DiagnosticPosition pos, EarlyConstructionContext context, Symbol sym) {
         if (context.onlyWarnings) {
             log.warning(pos, LintWarnings.WouldNotBeAllowedInPrologue(sym));
             return sym;
         }
         return new RefBeforeCtorCalledError(sym);
-    }
-
-    private boolean earlyReferenceIsError(DiagnosticPosition pos, EarlyConstructionContext context, Symbol sym) {
-        if (context.onlyWarnings) {
-            log.warning(pos, LintWarnings.WouldNotBeAllowedInPrologue(sym));
-            return false;
-        }
-        return true;
     }
 
     private void logEarlyReference(DiagnosticPosition pos, EarlyConstructionContext context, Name name) {
