@@ -3913,8 +3913,9 @@ public class Resolve {
                         sym = new StaticError(sym);
                     else {
                         EarlyConstructionContext context = env1.info.earlyConstruction;
-                        if (sym.owner == context.owner &&
-                                !env.info.earlyConstruction.isFieldAccessQualifier() &&
+                        if (context != EarlyConstructionContext.NONE &&
+                                env.info.earlyConstruction != EarlyConstructionContext.NONE &&
+                                sym.owner == context.owner &&
                                 !isReceiverParameter(env, tree)) {
                             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
                             sym = earlyReferenceResult(pos, context, sym);
@@ -3934,8 +3935,7 @@ public class Resolve {
             for (Type t : pruneInterfaces(env.enclClass.type)) {
                 if (t.tsym == c) {
                     EarlyConstructionContext context = env.info.earlyConstruction;
-                    if (context != EarlyConstructionContext.NONE &&
-                            !context.isFieldAccessQualifier()) {
+                    if (context != EarlyConstructionContext.NONE) {
                         preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
                         logEarlyReference(pos, context, name);
                     }
@@ -3985,54 +3985,90 @@ public class Resolve {
     private Symbol earlyFieldAccessResult(DiagnosticPosition pos, Env<AttrContext> env, JCTree base, VarSymbol field, boolean writeOnlyTarget) {
         EarlyConstructionContext context = env.info.earlyConstruction;
         if (field.name == names._this || field.name == names._super) {
-            if (field.owner != context.owner) {
+            if (context == EarlyConstructionContext.NONE || field.owner != context.owner) {
                 return field;
             }
-            if (context.isFieldAccessQualifier()) {
-                return field;
-            }
-            return earlyReferenceResult(pos, context, field);
-        }
-        if (!isEarlyReference(env, base, field)) {
-            return field;
-        }
-        if ((field.flags() & STATIC) != 0) {
             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
             return earlyReferenceResult(pos, context, field);
         }
         if (writeOnlyTarget) {
-            preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
             return field;
         }
-        preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
-        if (context.allowsFieldRead(field)) {
-            if (context.shouldTrackEarlyReads() &&
-                    env.enclMethod != null &&
-                    TreeInfo.isConstructor(env.enclMethod)) {
-                localProxyVarsGen.addFieldReadInPrologue(env.enclMethod, field);
-            }
+        if (isAllowedEarlyFieldReference(pos, env, base, field, false)) {
             return field;
         }
         return earlyReferenceResult(pos, context, field);
     }
 
-    boolean isEarlyReference(Env<AttrContext> env, JCTree base, VarSymbol field) {
+    /** 6.5.6.1: early field references are restricted to the current class fields. */
+    boolean isAllowedEarlyFieldReference(DiagnosticPosition pos,
+                                         Env<AttrContext> env,
+                                         JCTree base,
+                                         VarSymbol field,
+                                         boolean writeOnlyTarget) {
         EarlyConstructionContext context = env.info.earlyConstruction;
-        if (context == EarlyConstructionContext.NONE ||
-                !field.isMemberOf(context.owner, types)) {
+        if (context == EarlyConstructionContext.NONE) {
+            // not in an early context
+            return true;
+        }
+        return (base != null) ?
+                isAllowedEarlyQualifiedFieldReference(pos, env, context, base, field, writeOnlyTarget) :
+                isAllowedEarlyUnqualifiedFieldReference(pos, env, context, field, writeOnlyTarget);
+    }
+
+    /** 15.8.3/15.8.4: early this can only qualify allowed instance field accesses. */
+    private boolean isAllowedEarlyQualifiedFieldReference(DiagnosticPosition pos,
+                                                         Env<AttrContext> env,
+                                                         EarlyConstructionContext context,
+                                                         JCTree base,
+                                                         VarSymbol field,
+                                                         boolean writeOnlyTarget) {
+        if (!TreeInfo.isExplicitThisReference(types, (ClassType)context.owner.type, base)) {
+            // Foo.this.x, where Foo is unrelated, ignore
+            return true;
+        }
+        if (field.isStatic()) {
+            // early this can only qualify instance field accesses
+            preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
             return false;
         }
-        if ((field.flags() & STATIC) != 0) {
-            return base != null &&
-                    TreeInfo.isExplicitThisReference(types, (ClassType)context.owner.type, base);
+        return isAllowedEarlyUnqualifiedFieldReference(pos, env, context, field, writeOnlyTarget);
+    }
+
+    /** 6.5.6.1: unqualified early field references are restricted to the current class fields. */
+    private boolean isAllowedEarlyUnqualifiedFieldReference(DiagnosticPosition pos,
+                                                           Env<AttrContext> env,
+                                                           EarlyConstructionContext context,
+                                                           VarSymbol field,
+                                                           boolean writeOnlyTarget) {
+        if (field.isStatic()) {
+            // simple-name static field access does not depend on the early object
+            return true;
         }
-        if (base == null &&
-                env.enclClass.sym != context.owner &&
-                field.isMemberOf(env.enclClass.sym, types)) {
+        if (!field.isMemberOf(context.owner, types)) {
+            // instance field is not a member of the class whose constructor we're in
+            return true;
+        }
+        preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
+        if (field.owner != context.owner) {
+            // field is a member of the class whose constructor we're in, but is not declared there
             return false;
         }
-        return base == null ||
-                TreeInfo.isExplicitThisReference(types, (ClassType)context.owner.type, base);
+        if (writeOnlyTarget) {
+            // defer to Attr.checkAssignable
+            return !context.disallowEarlyReads &&
+                    (field.flags_field & HASINIT) == 0;
+        }
+        if (!context.allowsFieldRead(field)) {
+            // early reads disabled in this context
+            return false;
+        } else if (context.shouldTrackEarlyReads() &&
+                env.enclMethod != null &&
+                TreeInfo.isConstructor(env.enclMethod)) {
+            // track the early read for codegen
+            localProxyVarsGen.addFieldReadInPrologue(env.enclMethod, field);
+        }
+        return true;
     }
 
     private Symbol earlyReferenceResult(DiagnosticPosition pos, EarlyConstructionContext context, Symbol sym) {

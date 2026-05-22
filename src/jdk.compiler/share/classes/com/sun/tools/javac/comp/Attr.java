@@ -319,9 +319,9 @@ public class Attr extends JCTree.Visitor {
             return;
         }
 
-        if (rs.isEarlyReference(env, base, v)) {
-            EarlyConstructionContext context = env.info.earlyConstruction;
-            preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
+        EarlyConstructionContext context = env.info.earlyConstruction;
+        if (context != EarlyConstructionContext.NONE &&
+                !rs.isAllowedEarlyFieldReference(pos, env, base, v, true)) {
 
             if (context.disallowEarlyReads || v.owner != context.owner) {
                 if (context.onlyWarnings) {
@@ -341,6 +341,7 @@ public class Attr extends JCTree.Visitor {
                 return;
             }
         }
+
     }
 
     /** Does tree represent a static reference to an identifier?
@@ -4472,7 +4473,7 @@ public class Attr extends JCTree.Visitor {
                     (TreeInfo.isThisOrSelectorDotThis(tree.selected) ||
                     TreeInfo.isSuperOrSelectorDotSuper(tree.selected));
             if (fieldAccessCandidate) {
-                env.info.earlyConstruction = earlyConstructionPrev.fieldAccessQualifier();
+                env.info.earlyConstruction = EarlyConstructionContext.NONE;
             }
             site = attribTree(tree.selected, env, new ResultInfo(skind, Type.noType));
         } finally {
