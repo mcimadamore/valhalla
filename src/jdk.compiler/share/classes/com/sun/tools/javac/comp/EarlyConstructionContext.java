@@ -30,17 +30,32 @@ import com.sun.tools.javac.code.Symbol.VarSymbol;
 import com.sun.tools.javac.tree.JCTree.JCExpression;
 
 import static com.sun.tools.javac.code.Flags.HASINIT;
-import static com.sun.tools.javac.code.Kinds.Kind.TYP;
 
 /** Early-construction state carried by attribution environments. */
 class EarlyConstructionContext {
 
+    // A dummy early construction context
     static final EarlyConstructionContext NONE =
-            new EarlyConstructionContext(null, false, false, false, false, false, null);
+            new EarlyConstructionContext(null, false, false, false, false, false, null) {
+                @Override
+                EarlyConstructionContext nested(boolean isClass) {
+                    return this;
+                }
+
+                @Override
+                EarlyConstructionContext fieldAccessQualifier() {
+                    return this;
+                }
+
+                @Override
+                EarlyConstructionContext fieldAccess(JCExpression base) {
+                    return this;
+                }
+            };
 
     final ClassSymbol owner;
     final boolean onlyWarnings;
-    final boolean restricted;
+    final boolean disallowEarlyReads;
     final boolean ctorPrologue;
     final boolean initializer;
 
@@ -49,68 +64,52 @@ class EarlyConstructionContext {
 
     private EarlyConstructionContext(ClassSymbol owner,
                                      boolean onlyWarnings,
-                                     boolean restricted,
+                                     boolean disallowEarlyReads,
                                      boolean ctorPrologue,
                                      boolean initializer,
                                      boolean fieldAccessQualifier,
                                      JCExpression fieldAccessBase) {
         this.owner = owner;
         this.onlyWarnings = onlyWarnings;
-        this.restricted = restricted;
+        this.disallowEarlyReads = disallowEarlyReads;
         this.ctorPrologue = ctorPrologue;
         this.initializer = initializer;
         this.fieldAccessQualifier = fieldAccessQualifier;
         this.fieldAccessBase = fieldAccessBase;
     }
 
-    static EarlyConstructionContext forConstructor(ClassSymbol owner,
-                                                   boolean onlyWarnings,
-                                                   boolean restricted) {
-        return new EarlyConstructionContext(owner, onlyWarnings, restricted, !onlyWarnings, false, false, null);
+    // Root early contexts
+
+    static EarlyConstructionContext ofConstructor(ClassSymbol owner,
+                                                  boolean onlyWarnings,
+                                                  boolean disallowEarlyReads) {
+        return new EarlyConstructionContext(owner, onlyWarnings, disallowEarlyReads, !onlyWarnings,
+                false, false, null);
     }
 
-    static EarlyConstructionContext forFieldInitializer(VarSymbol field,
-                                                       EarlyConstructionContext current,
-                                                       boolean allowValueClasses) {
-        if (field.owner.kind != TYP || field.isStatic() || !allowValueClasses) {
-            return current;
-        }
+    static EarlyConstructionContext ofFieldInitializer(VarSymbol field) {
         return new EarlyConstructionContext((ClassSymbol)field.owner, !field.isStrict(), false,
                 field.isStrict(), true, false, null);
     }
 
-    EarlyConstructionContext nested() {
-        return owner == null ?
-                this :
-                new EarlyConstructionContext(owner, onlyWarnings, true, false, initializer, false, null);
-    }
+    // Derived early contexts (used by Attr)
 
-    EarlyConstructionContext nestedLambda() {
-        return owner == null ?
-                this :
-                new EarlyConstructionContext(owner, onlyWarnings, true, ctorPrologue, initializer, false, null);
+    EarlyConstructionContext nested(boolean isClass) {
+        return new EarlyConstructionContext(owner, onlyWarnings, true,
+                !isClass && ctorPrologue, initializer, false, null);
     }
 
     EarlyConstructionContext fieldAccessQualifier() {
-        return owner == null ?
-                this :
-                new EarlyConstructionContext(owner, onlyWarnings, restricted, ctorPrologue, initializer, true, null);
+        return new EarlyConstructionContext(owner, onlyWarnings, disallowEarlyReads, ctorPrologue,
+                initializer, true, null);
     }
 
     EarlyConstructionContext fieldAccess(JCExpression base) {
-        return owner == null ?
-                this :
-                new EarlyConstructionContext(owner, onlyWarnings, restricted, ctorPrologue, initializer, false, base);
+        return new EarlyConstructionContext(owner, onlyWarnings, disallowEarlyReads, ctorPrologue,
+                initializer, false, base);
     }
 
-    EarlyConstructionContext afterConstructorCall() {
-        if (owner == null) {
-            return this;
-        }
-        return onlyWarnings ?
-                new EarlyConstructionContext(owner, onlyWarnings, restricted, ctorPrologue, initializer, false, null) :
-                NONE;
-    }
+    // predicates (used by Resolve)
 
     boolean isFieldAccessQualifier() {
         return fieldAccessQualifier;
@@ -125,7 +124,7 @@ class EarlyConstructionContext {
     }
 
     boolean allowsFieldRead(VarSymbol field) {
-        return !restricted &&
+        return !disallowEarlyReads &&
                 field.owner == owner &&
                 (owner.isValueClass() ||
                  onlyWarnings || // pretend fields are strict

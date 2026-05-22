@@ -32,7 +32,6 @@ import com.sun.tools.javac.code.*;
 import com.sun.tools.javac.code.Scope.WriteableScope;
 import com.sun.tools.javac.tree.*;
 import com.sun.tools.javac.util.*;
-import com.sun.tools.javac.util.JCDiagnostic.DiagnosticPosition;
 import com.sun.tools.javac.util.JCDiagnostic.Error;
 import com.sun.tools.javac.code.Source.Feature;
 
@@ -299,9 +298,9 @@ public class MemberEnter extends JCTree.Visitor {
                 Env<AttrContext> initEnv = getInitEnv(tree, env);
                 initEnv.info.enclVar = v;
                 initEnv = initEnv(tree, initEnv);
-                initEnv.info.earlyConstruction = EarlyConstructionContext.forFieldInitializer(v,
-                        initEnv.info.earlyConstruction,
-                        allowValueClasses);
+                if (v.owner.kind == TYP && !v.isStatic() && allowValueClasses) {
+                    initEnv.info.earlyConstruction = EarlyConstructionContext.ofFieldInitializer(v);
+                }
                 v.setLazyConstValue(initEnv(tree, initEnv), env, attr, tree);
             }
         }

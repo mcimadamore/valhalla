@@ -323,7 +323,7 @@ public class Attr extends JCTree.Visitor {
             EarlyConstructionContext context = env.info.earlyConstruction;
             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
 
-            if (context.restricted || v.owner != context.owner) {
+            if (context.disallowEarlyReads || v.owner != context.owner) {
                 if (context.onlyWarnings) {
                     log.warning(pos, LintWarnings.WouldNotBeAllowedInPrologue(v));
                 } else {
@@ -971,7 +971,7 @@ public class Attr extends JCTree.Visitor {
                         argumentAttr.withLocalCacheContext() : null);
         EarlyConstructionContext earlyConstructionPrev = env.info.earlyConstruction;
         try {
-            env.info.earlyConstruction = earlyConstructionPrev.nested();
+            env.info.earlyConstruction = earlyConstructionPrev.nested(true);
             // Local and anonymous classes have not been entered yet, so we need to
             // do it now.
             if (env.info.scope.owner.kind.matches(KindSelector.VAL_MTH)) {
@@ -1265,7 +1265,7 @@ public class Attr extends JCTree.Visitor {
                         TreeInfo.hasConstructorCall(tree, names._this);
                 EarlyConstructionContext methodEarlyConstruction = localEnv.info.earlyConstruction;
                 localEnv.info.earlyConstruction = isConstructor && owner.type != syms.objectType ?
-                        EarlyConstructionContext.forConstructor(owner,
+                        EarlyConstructionContext.ofConstructor(owner,
                                 addedSuperInIdentityClass && allowValueClasses,
                                 hasThisConstructorCall) :
                         methodEarlyConstruction;
@@ -1346,9 +1346,9 @@ public class Attr extends JCTree.Visitor {
                     initEnv.info.enclVar = v;
                     EarlyConstructionContext previousEarlyConstruction = initEnv.info.earlyConstruction;
                     try {
-                        initEnv.info.earlyConstruction = EarlyConstructionContext.forFieldInitializer(v,
-                                previousEarlyConstruction,
-                                allowValueClasses);
+                        if (v.owner.kind == TYP && !v.isStatic() && allowValueClasses) {
+                            initEnv.info.earlyConstruction = EarlyConstructionContext.ofFieldInitializer(v);
+                        }
                         attribExpr(tree.init, initEnv, v.type);
                         if (tree.isImplicitlyTyped()) {
                             //fixup local variable type
@@ -2614,7 +2614,9 @@ public class Attr extends JCTree.Visitor {
             typeargtypes = attribTypes(tree.typeargs, localEnv);
 
             // Done with this()/super() parameters. End of constructor prologue.
-            env.info.earlyConstruction = env.info.earlyConstruction.afterConstructorCall();
+            if (!env.info.earlyConstruction.onlyWarnings) {
+                env.info.earlyConstruction = EarlyConstructionContext.NONE;
+            }
 
             // Variable `site' points to the class in which the called
             // constructor is defined.
@@ -3637,7 +3639,7 @@ public class Attr extends JCTree.Visitor {
             }
             lambdaEnv.info.yieldResult = null;
             lambdaEnv.info.isLambda = true;
-            lambdaEnv.info.earlyConstruction = lambdaEnv.info.earlyConstruction.nestedLambda();
+            lambdaEnv.info.earlyConstruction = lambdaEnv.info.earlyConstruction.nested(false);
             return lambdaEnv;
         }
 
