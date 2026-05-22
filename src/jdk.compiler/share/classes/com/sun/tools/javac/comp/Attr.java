@@ -4460,15 +4460,17 @@ public class Attr extends JCTree.Visitor {
         // Attribute the qualifier expression, and determine its symbol (if any).
         Type site;
         EarlyConstructionContext earlyConstructionPrev = env.info.earlyConstruction;
-        boolean memberAccessCandidate = false;
+        boolean fieldAccessCandidate = false;
         try {
-            memberAccessCandidate = tree.name != names._this &&
+            boolean methodSelect = resultInfo.pt.hasTag(METHOD) || resultInfo.pt.hasTag(FORALL);
+            fieldAccessCandidate = tree.name != names._this &&
                     tree.name != names._super &&
                     tree.name != names._class &&
+                    !methodSelect &&
                     (TreeInfo.isThisOrSelectorDotThis(tree.selected) ||
                     TreeInfo.isSuperOrSelectorDotSuper(tree.selected));
-            if (memberAccessCandidate) {
-                env.info.earlyConstruction = earlyConstructionPrev.memberAccessQualifier();
+            if (fieldAccessCandidate) {
+                env.info.earlyConstruction = earlyConstructionPrev.fieldAccessQualifier();
             }
             site = attribTree(tree.selected, env, new ResultInfo(skind, Type.noType));
         } finally {
@@ -4505,8 +4507,8 @@ public class Attr extends JCTree.Visitor {
         Symbol sym;
         earlyConstructionPrev = env.info.earlyConstruction;
         try {
-            if (memberAccessCandidate) {
-                env.info.earlyConstruction = earlyConstructionPrev.memberAccess(tree.selected);
+            if (fieldAccessCandidate) {
+                env.info.earlyConstruction = earlyConstructionPrev.fieldAccess(tree.selected);
             }
             sym = selectSym(tree, sitesym, site, env, resultInfo);
             if (sym.kind == VAR && sym.name != names._super && env.info.defaultSuperCallSite != null) {

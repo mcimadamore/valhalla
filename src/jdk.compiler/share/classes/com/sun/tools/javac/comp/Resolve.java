@@ -2568,7 +2568,7 @@ public class Resolve {
                            Name name, KindSelector kind) {
         try {
             Symbol sym = findIdentInTypeInternal(env, site, name, kind);
-            JCTree base = env.info.earlyConstruction.memberAccessBase();
+            JCTree base = env.info.earlyConstruction.fieldAccessBase();
             if (base != null &&
                     sym.kind == VAR &&
                     sym.owner.kind == TYP) {
@@ -3926,7 +3926,7 @@ public class Resolve {
                         if (context.isActive() &&
                                 !env1.info.attributionMode.isSpeculative &&
                                 sym.owner == context.owner &&
-                                !env.info.earlyConstruction.isMemberAccessQualifier() &&
+                                !env.info.earlyConstruction.isFieldAccessQualifier() &&
                                 !isReceiverParameter(env, tree)) {
                             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
                             if (earlyReferenceIsError(pos, context, sym)) {
@@ -3950,7 +3950,7 @@ public class Resolve {
                     EarlyConstructionContext context = env.info.earlyConstruction;
                     if (context.isActive() &&
                             !env.info.attributionMode.isSpeculative &&
-                            !context.isMemberAccessQualifier()) {
+                            !context.isFieldAccessQualifier()) {
                         preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
                         logEarlyReference(pos, context, name);
                     }
@@ -3976,7 +3976,7 @@ public class Resolve {
 
     private Symbol earlyMethodAccessResult(DiagnosticPosition pos, Env<AttrContext> env, MethodSymbol method) {
         EarlyConstructionContext context = env.info.earlyConstruction;
-        JCTree base = context.memberAccessBase();
+        JCTree base = context.fieldAccessBase();
         if (!context.isActive() ||
                 env.info.attributionMode.isSpeculative ||
                 base == null ||
@@ -4021,7 +4021,7 @@ public class Resolve {
             if (field.owner != context.owner) {
                 return field;
             }
-            if (context.isMemberAccessQualifier()) {
+            if (context.isFieldAccessQualifier()) {
                 return field;
             }
             return earlyReferenceResult(pos, context, field);
