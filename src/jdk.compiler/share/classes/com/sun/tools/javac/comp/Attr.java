@@ -318,30 +318,6 @@ public class Attr extends JCTree.Visitor {
             }
             return;
         }
-
-        EarlyConstructionContext context = env.info.earlyConstruction;
-        if (context != EarlyConstructionContext.NONE &&
-                !rs.isAllowedEarlyFieldReference(pos, env, base, v, true)) {
-
-            if (context.disallowEarlyReads || v.owner != context.owner) {
-                if (context.onlyWarnings) {
-                    log.warning(pos, LintWarnings.WouldNotBeAllowedInPrologue(v));
-                } else {
-                    log.error(pos, Errors.CantRefBeforeCtorCalled(v));
-                }
-                return;
-            }
-
-            if ((v.flags_field & HASINIT) != 0) {
-                if (context.onlyWarnings) {
-                    log.warning(pos, LintWarnings.WouldNotBeAllowedInPrologue(v));
-                } else {
-                    log.error(pos, Errors.CantAssignInitializedBeforeCtorCalled(v));
-                }
-                return;
-            }
-        }
-
     }
 
     /** Does tree represent a static reference to an identifier?

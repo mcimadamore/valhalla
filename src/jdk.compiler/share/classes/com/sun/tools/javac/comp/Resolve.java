@@ -1536,7 +1536,7 @@ public class Resolve {
                 if (sym.kind == VAR &&
                         sym.owner.kind == TYP &&
                         (sym.flags() & STATIC) == 0) {
-                    Symbol earlySym = earlyFieldAccessResult(pos, env1, null, (VarSymbol)sym, writeOnlyTarget);
+                    Symbol earlySym = checkEarlyFieldRef(pos, env1, null, (VarSymbol)sym, writeOnlyTarget);
                     if (earlySym != sym) {
                         return earlySym;
                     }
@@ -2053,7 +2053,7 @@ public class Resolve {
                             EarlyConstructionContext context = env1.info.earlyConstruction;
                             if (env1.enclClass.sym == context.owner &&
                                     sym.isMemberOf(context.owner, types)) {
-                                return earlyReferenceResult(methodInvocationTarget(env), context, sym);
+                                return earlyRefResult(methodInvocationTarget(env), context, sym, false);
                             }
                         }
                     }
@@ -2570,7 +2570,7 @@ public class Resolve {
             if (base != null &&
                     sym.kind == VAR &&
                     sym.owner.kind == TYP) {
-                sym = earlyFieldAccessResult(pos, env, base, (VarSymbol)sym, kind.isAssignment());
+                sym = checkEarlyFieldRef(pos, env, base, (VarSymbol)sym, kind.isAssignment());
             }
             return checkNonExistentType(checkRestrictedType(pos, sym, name));
         } catch (ClassFinder.BadClassFile err) {
@@ -3848,7 +3848,7 @@ public class Resolve {
                         // current class is not an inner class, stop search
                         return new StaticError(sym);
                     } else if (env1.enclClass.sym == env1.info.earlyConstruction.owner) {
-                        return earlyReferenceResult(pos, env1.info.earlyConstruction, sym);
+                        return earlyRefResult(pos, env1.info.earlyConstruction, sym, false);
                     } else {
                         // found it
                         return sym;
@@ -3918,7 +3918,7 @@ public class Resolve {
                                 sym.owner == context.owner &&
                                 !isReceiverParameter(env, tree)) {
                             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
-                            sym = earlyReferenceResult(pos, context, sym);
+                            sym = earlyRefResult(pos, context, sym, false);
                         }
                     }
                     return accessBase(sym, pos, env.enclClass.sym.type,
@@ -3982,47 +3982,44 @@ public class Resolve {
         return result.toList();
     }
 
-    private Symbol earlyFieldAccessResult(DiagnosticPosition pos, Env<AttrContext> env, JCTree base, VarSymbol field, boolean writeOnlyTarget) {
+    private Symbol checkEarlyFieldRef(DiagnosticPosition pos, Env<AttrContext> env, JCTree base, VarSymbol field, boolean writeOnlyTarget) {
         EarlyConstructionContext context = env.info.earlyConstruction;
         if (field.name == names._this || field.name == names._super) {
             if (context == EarlyConstructionContext.NONE || field.owner != context.owner) {
                 return field;
             }
             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
-            return earlyReferenceResult(pos, context, field);
+            return earlyRefResult(pos, context, field, false);
         }
-        if (writeOnlyTarget) {
-            return field;
-        }
-        if (isAllowedEarlyFieldReference(pos, env, base, field, false)) {
-            return field;
-        }
-        return earlyReferenceResult(pos, context, field);
+        return isEarlyFieldRefAllowed(pos, env, base, field, writeOnlyTarget) ?
+                field :
+                earlyRefResult(pos, context, field,
+                        writeOnlyTarget && (field.flags_field & HASINIT) != 0);
     }
 
     /** 6.5.6.1: early field references are restricted to the current class fields. */
-    boolean isAllowedEarlyFieldReference(DiagnosticPosition pos,
-                                         Env<AttrContext> env,
-                                         JCTree base,
-                                         VarSymbol field,
-                                         boolean writeOnlyTarget) {
+    private boolean isEarlyFieldRefAllowed(DiagnosticPosition pos,
+                                           Env<AttrContext> env,
+                                           JCTree base,
+                                           VarSymbol field,
+                                           boolean writeOnlyTarget) {
         EarlyConstructionContext context = env.info.earlyConstruction;
         if (context == EarlyConstructionContext.NONE) {
             // not in an early context
             return true;
         }
         return (base != null) ?
-                isAllowedEarlyQualifiedFieldReference(pos, env, context, base, field, writeOnlyTarget) :
-                isAllowedEarlyUnqualifiedFieldReference(pos, env, context, field, writeOnlyTarget);
+                isQualifiedEarlyFieldRefAllowed(pos, env, context, base, field, writeOnlyTarget) :
+                isSimpleEarlyFieldRefAllowed(pos, env, context, field, writeOnlyTarget);
     }
 
     /** 15.8.3/15.8.4: early this can only qualify allowed instance field accesses. */
-    private boolean isAllowedEarlyQualifiedFieldReference(DiagnosticPosition pos,
-                                                         Env<AttrContext> env,
-                                                         EarlyConstructionContext context,
-                                                         JCTree base,
-                                                         VarSymbol field,
-                                                         boolean writeOnlyTarget) {
+    private boolean isQualifiedEarlyFieldRefAllowed(DiagnosticPosition pos,
+                                                    Env<AttrContext> env,
+                                                    EarlyConstructionContext context,
+                                                    JCTree base,
+                                                    VarSymbol field,
+                                                    boolean writeOnlyTarget) {
         if (!TreeInfo.isExplicitThisReference(types, (ClassType)context.owner.type, base)) {
             // Foo.this.x, where Foo is unrelated, ignore
             return true;
@@ -4032,15 +4029,15 @@ public class Resolve {
             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
             return false;
         }
-        return isAllowedEarlyUnqualifiedFieldReference(pos, env, context, field, writeOnlyTarget);
+        return isSimpleEarlyFieldRefAllowed(pos, env, context, field, writeOnlyTarget);
     }
 
     /** 6.5.6.1: unqualified early field references are restricted to the current class fields. */
-    private boolean isAllowedEarlyUnqualifiedFieldReference(DiagnosticPosition pos,
-                                                           Env<AttrContext> env,
-                                                           EarlyConstructionContext context,
-                                                           VarSymbol field,
-                                                           boolean writeOnlyTarget) {
+    private boolean isSimpleEarlyFieldRefAllowed(DiagnosticPosition pos,
+                                                 Env<AttrContext> env,
+                                                 EarlyConstructionContext context,
+                                                 VarSymbol field,
+                                                 boolean writeOnlyTarget) {
         if (field.isStatic()) {
             // simple-name static field access does not depend on the early object
             return true;
@@ -4055,9 +4052,10 @@ public class Resolve {
             return false;
         }
         if (writeOnlyTarget) {
-            // defer to Attr.checkAssignable
-            return !context.disallowEarlyReads &&
-                    (field.flags_field & HASINIT) == 0;
+            boolean hasInit = (field.flags_field & HASINIT) != 0;
+            return hasInit ?
+                    field.isFinal() :        // let Attr.checkAssignable report initialized final field writes
+                    !context.disallowEarlyReads; // nested/restricted contexts reject early writes too
         }
         if (!context.allowsFieldRead(field)) {
             // early reads disabled in this context
@@ -4071,12 +4069,13 @@ public class Resolve {
         return true;
     }
 
-    private Symbol earlyReferenceResult(DiagnosticPosition pos, EarlyConstructionContext context, Symbol sym) {
+    private Symbol earlyRefResult(DiagnosticPosition pos, EarlyConstructionContext context, Symbol sym,
+                                  boolean initializedFieldAssignment) {
         if (context.onlyWarnings) {
             log.warning(pos, LintWarnings.WouldNotBeAllowedInPrologue(sym));
             return sym;
         }
-        return new RefBeforeCtorCalledError(sym);
+        return new RefBeforeCtorCalledError(sym, initializedFieldAssignment);
     }
 
     private void logEarlyReference(DiagnosticPosition pos, EarlyConstructionContext context, Name name) {
@@ -4862,8 +4861,15 @@ public class Resolve {
      */
     class RefBeforeCtorCalledError extends StaticError {
 
+        final boolean initializedFieldAssignment;
+
         RefBeforeCtorCalledError(Symbol sym) {
+            this(sym, false);
+        }
+
+        RefBeforeCtorCalledError(Symbol sym, boolean initializedFieldAssignment) {
             super(sym, "prologue error");
+            this.initializedFieldAssignment = initializedFieldAssignment;
         }
 
         @Override
@@ -4877,6 +4883,11 @@ public class Resolve {
             Symbol errSym = ((sym.kind == TYP && sym.type.hasTag(CLASS))
                 ? types.erasure(sym.type).tsym
                 : sym);
+            if (initializedFieldAssignment) {
+                // @@@: Does this carry enough value?
+                return diags.create(dkind, log.currentSource(), pos,
+                        "cant.assign.initialized.before.ctor.called", errSym);
+            }
             return diags.create(dkind, log.currentSource(), pos,
                     "cant.ref.before.ctor.called", errSym);
         }
