@@ -179,7 +179,7 @@ public class Attr extends JCTree.Visitor {
 
         statInfo = new ResultInfo(KindSelector.NIL, Type.noType);
         varAssignmentInfo = new ResultInfo(KindSelector.ASG, Type.noType);
-        varAssignmentWithReadInfo = new ResultInfo(KindSelector.of(KindSelector.VAL, KindSelector.ASG), Type.noType);
+        varAssignmentOpInfo = new ResultInfo(KindSelector.of(KindSelector.VAL, KindSelector.ASG), Type.noType);
         unknownExprInfo = new ResultInfo(KindSelector.VAL, Type.noType);
         methodAttrInfo = new MethodAttrInfo();
         unknownTypeInfo = new ResultInfo(KindSelector.TYP, Type.noType);
@@ -617,7 +617,7 @@ public class Attr extends JCTree.Visitor {
 
     final ResultInfo statInfo;
     final ResultInfo varAssignmentInfo;
-    final ResultInfo varAssignmentWithReadInfo;
+    final ResultInfo varAssignmentOpInfo;
     final ResultInfo methodAttrInfo;
     final ResultInfo unknownExprInfo;
     final ResultInfo unknownTypeInfo;
@@ -1309,13 +1309,13 @@ public class Attr extends JCTree.Visitor {
             chk.checkDeprecatedAnnotation(tree.pos(), v);
 
             if (tree.init != null) {
-                Env<AttrContext> initEnv = memberEnter.initEnv(tree, env);
                 if ((v.flags_field & FINAL) == 0 ||
                     !memberEnter.needsLazyConstValue(tree.init)) {
                     // Not a compile-time constant
                     // Attribute initializer in a new environment
                     // with the declared variable as owner.
                     // Check that initializer conforms to variable's declared type.
+                    Env<AttrContext> initEnv = memberEnter.initEnv(tree, env);
                     initEnv.info.lint = lint;
                     // In order to catch self-references, we set the variable's
                     // declaration position to maximal possible value, effectively
@@ -4018,7 +4018,7 @@ public class Attr extends JCTree.Visitor {
 
     public void visitAssignop(JCAssignOp tree) {
         // Attribute arguments.
-        Type owntype = attribTree(tree.lhs, env, varAssignmentWithReadInfo);
+        Type owntype = attribTree(tree.lhs, env, varAssignmentOpInfo);
         Type operand = attribExpr(tree.rhs, env);
         // Find operator.
         Symbol operator = tree.operator = operators.resolveBinary(tree, tree.getTag().noAssignOp(), owntype, operand);
@@ -4041,7 +4041,7 @@ public class Attr extends JCTree.Visitor {
     public void visitUnary(JCUnary tree) {
         // Attribute arguments.
         Type argtype = (tree.getTag().isIncOrDecUnaryOp())
-            ? attribTree(tree.arg, env, varAssignmentWithReadInfo)
+            ? attribTree(tree.arg, env, varAssignmentOpInfo)
             : chk.checkNonVoid(tree.arg.pos(), attribExpr(tree.arg, env));
 
         // Find operator.
@@ -4440,16 +4440,9 @@ public class Attr extends JCTree.Visitor {
         // Attribute the qualifier expression, and determine its symbol (if any).
         Type site;
         EarlyConstructionContext earlyConstructionPrev = env.info.earlyConstruction;
-        boolean fieldAccessCandidate = false;
+        boolean fieldQualifiedByThisOrSuper = isFieldQualifiedByThisOrSuper(tree);
         try {
-            boolean methodSelect = resultInfo.pt.hasTag(METHOD) || resultInfo.pt.hasTag(FORALL);
-            fieldAccessCandidate = tree.name != names._this &&
-                    tree.name != names._super &&
-                    tree.name != names._class &&
-                    !methodSelect &&
-                    (TreeInfo.isThisOrSelectorDotThis(tree.selected) ||
-                    TreeInfo.isSuperOrSelectorDotSuper(tree.selected));
-            if (fieldAccessCandidate) {
+            if (fieldQualifiedByThisOrSuper) {
                 env.info.earlyConstruction = EarlyConstructionContext.NONE;
             }
             site = attribTree(tree.selected, env, new ResultInfo(skind, Type.noType));
@@ -4485,10 +4478,9 @@ public class Attr extends JCTree.Visitor {
         // Determine the symbol represented by the selection.
         env.info.pendingResolutionPhase = null;
         Symbol sym;
-        earlyConstructionPrev = env.info.earlyConstruction;
         try {
-            if (fieldAccessCandidate) {
-                env.info.earlyConstruction = earlyConstructionPrev.fieldAccess(tree.selected);
+            if (fieldQualifiedByThisOrSuper) {
+                env.info.earlyConstruction = env.info.earlyConstruction.fieldAccess(tree.selected);
             }
             sym = selectSym(tree, sitesym, site, env, resultInfo);
             if (sym.kind == VAR && sym.name != names._super && env.info.defaultSuperCallSite != null) {
@@ -4521,9 +4513,8 @@ public class Attr extends JCTree.Visitor {
 
             // If we are expecting a variable (as opposed to a value), check
             // that the variable is assignable in the current environment.
-            if (KindSelector.ASG.subset(pkind())) {
+            if (KindSelector.ASG.subset(pkind()))
                 checkAssignable(tree.pos(), v, tree.selected, env);
-            }
         }
 
         if (sitesym != null &&
@@ -4585,6 +4576,14 @@ public class Attr extends JCTree.Visitor {
         env.info.selectSuper = selectSuperPrev;
         result = checkId(tree, site, sym, env, resultInfo);
     }
+
+    private boolean isFieldQualifiedByThisOrSuper(JCFieldAccess tree) {
+        boolean methodSelect = resultInfo.pt.hasTag(METHOD) || resultInfo.pt.hasTag(FORALL);
+        return !methodSelect &&
+                (TreeInfo.isThisOrSelectorDotThis(tree.selected) ||
+                TreeInfo.isSuperOrSelectorDotSuper(tree.selected));
+    }
+
     //where
         /** Determine symbol referenced by a Select expression,
          *

@@ -2057,7 +2057,8 @@ public class Resolve {
                             EarlyConstructionContext context = env1.info.earlyConstruction;
                             if (env1.enclClass.sym == context.owner() &&
                                     sym.isMemberOf(context.owner(), types)) {
-                                return earlyRefResult(methodInvocationTarget(env), context, sym, false);
+                                Assert.check(env.tree.hasTag(APPLY));
+                                return earlyRefResult(((JCMethodInvocation)env.tree).meth, context, sym, false);
                             }
                         }
                     }
@@ -2107,12 +2108,6 @@ public class Resolve {
             }
         }
         return bestSoFar;
-    }
-
-    private DiagnosticPosition methodInvocationTarget(Env<AttrContext> env) {
-        return env.tree.hasTag(APPLY) ?
-                ((JCMethodInvocation)env.tree).meth :
-                env.tree;
     }
 
     /** Load toplevel or member class with given fully qualified name and
@@ -3959,14 +3954,7 @@ public class Resolve {
         log.error(pos, Errors.NotEnclClass(c));
         return syms.errSymbol;
     }
-
-    private boolean isReceiverParameter(Env<AttrContext> env, JCFieldAccess tree) {
-        if (env.tree.getTag() != METHODDEF)
-            return false;
-        JCMethodDecl method = (JCMethodDecl)env.tree;
-        return method.recvparam != null && tree == method.recvparam.nameexpr;
-    }
-
+    //where
     private List<Type> pruneInterfaces(Type t) {
         ListBuffer<Type> result = new ListBuffer<>();
         for (Type t1 : types.interfaces(t)) {
@@ -3981,6 +3969,12 @@ public class Resolve {
             }
         }
         return result.toList();
+    }
+    private boolean isReceiverParameter(Env<AttrContext> env, JCFieldAccess tree) {
+        if (env.tree.getTag() != METHODDEF)
+            return false;
+        JCMethodDecl method = (JCMethodDecl)env.tree;
+        return method.recvparam != null && tree == method.recvparam.nameexpr;
     }
 
     /** Check if a field access is allowed in this context */
