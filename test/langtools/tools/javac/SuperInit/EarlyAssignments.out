@@ -19,4 +19,6 @@ EarlyAssignments.java:152:13: compiler.err.cant.assign.initialized.before.ctor.c
 EarlyAssignments.java:161:13: compiler.err.cant.assign.val.to.var: final, x
 EarlyAssignments.java:172:13: compiler.err.cant.ref.before.ctor.called: this
 EarlyAssignments.java:181:17: compiler.err.cant.ref.before.ctor.called: x
+- compiler.note.preview.filename: EarlyAssignments.java, DEFAULT
+- compiler.note.preview.recompile
 21 errors

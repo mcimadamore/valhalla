@@ -3920,7 +3920,6 @@ public class Resolve {
                         EarlyConstructionContext context = env1.info.earlyConstruction;
                         if (sym.owner == context.owner() &&
                                 !isReceiverParameter(env, tree)) {
-                            preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
                             sym = earlyRefResult(pos, context, sym, false);
                         }
                     }
@@ -3940,7 +3939,6 @@ public class Resolve {
                             types.asSuper(env.enclClass.type, c), env.enclClass.sym);
                     EarlyConstructionContext context = env.info.earlyConstruction;
                     if (context != EarlyConstructionContext.NONE) {
-                        preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
                         sym = earlyRefResult(pos, context, sym, false);
                     }
                     env.info.defaultSuperCallSite = t;
@@ -3985,6 +3983,7 @@ public class Resolve {
         return result.toList();
     }
 
+    /** Check if a field access is allowed in this context */
     private Symbol checkEarlyFieldRef(DiagnosticPosition pos, Env<AttrContext> env, JCTree base, VarSymbol field, boolean writeOnlyTarget) {
         EarlyConstructionContext context = env.info.earlyConstruction;
         Assert.check(context != EarlyConstructionContext.NONE);
@@ -3994,10 +3993,12 @@ public class Resolve {
         return earlyRefOk ?
                 field :
                 earlyRefResult(pos, context, field,
-                            writeOnlyTarget && (field.flags_field & HASINIT) != 0);
+                            writeOnlyTarget &&
+                                    field.owner == context.owner() &&
+                                    (field.flags_field & HASINIT) != 0);
     }
 
-    /** Early qualified references are restricted to fields selected from early this/super. */
+    /** Implements early access checks for qualified field references (15.8.3, 15.8.4) */
     private boolean isQualifiedEarlyRefAllowed(DiagnosticPosition pos,
                                                Env<AttrContext> env,
                                                EarlyConstructionContext context,
@@ -4015,46 +4016,57 @@ public class Resolve {
         return isSimpleEarlyFieldRefAllowed(pos, env, context, field, writeOnlyTarget);
     }
 
-    /** 6.5.6.1: unqualified early field references are restricted to the current class fields. */
+    /** Implements early access checks for unqualified field references (6.5.6.1) */
     private boolean isSimpleEarlyFieldRefAllowed(DiagnosticPosition pos,
                                                  Env<AttrContext> env,
                                                  EarlyConstructionContext context,
                                                  VarSymbol field,
-        boolean writeOnlyTarget) {
+                                                 boolean writeOnlyTarget) {
         if (field.name == names._this || field.name == names._super) {
+            // If unrelated this/super, ignore
             return field.owner != context.owner();
         }
-        if (field.isStatic()) {
-            // simple-name static field access does not depend on the early object
+        if (field.isStatic() ||
+                !field.isMemberOf(context.owner(), types)) {
+            // If unqualified static field, or unrelated instance field, ignore
             return true;
         }
-        if (!field.isMemberOf(context.owner(), types)) {
-            // instance field is not a member of the class whose constructor we're in
-            return true;
-        }
-        preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
+        // We have now ruled out all cases where the check should not apply. Let's follow 6.5.6.1
         if (field.owner != context.owner()) {
-            // field is a member of the class whose constructor we're in, but is not declared there
+            // The instance variable is declared by C, not a superclass of C
             return false;
         }
+        if (context.restricted()) {
+            // The expression name does not appear in a constructor of C whose body includes an
+            // alternate constructor invocation, or a nested class or interface declaration
+            // of C, or a lambda expression contained by C
+            return false;
+        }
+        if ((field.flags_field & HASINIT) != 0 &&
+                !context.owner().isValueClass() &&
+                !context.onlyWarnings()) {
+            // Either the declaration of the named variable has no initializer,
+            // or C is a value class (8.1.1.5). Plus, if warnings are enabled, treat
+            // C implicitly as if it were a value class. To preserve legacy behavior,
+            // bad final field writes are never reported as early access.
+            return writeOnlyTarget && field.isFinal();
+        }
+        // At this point we have seen a legal early ref
         if (writeOnlyTarget) {
-            boolean hasInit = (field.flags_field & HASINIT) != 0;
-            return hasInit ?
-                    field.isFinal() :        // let Attr.checkAssignable report initialized final field writes
-                    !context.disallowEarlyReads(); // nested/restricted contexts reject early writes too
-        }
-        if (!context.allowsFieldRead(field)) {
-            // early reads disabled in this context
-            return false;
-        } else if (context.shouldTrackEarlyReads() &&
-                env.enclMethod != null &&
-                TreeInfo.isConstructor(env.enclMethod)) {
-            // track the early read for codegen
-            localProxyVarsGen.addFieldReadInPrologue(env.enclMethod, field);
+            // Write early ref, this is allowed with flexible constructor bodies
+            preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
+        } else {
+            // Read early ref, this is only allowed under JEP 401, and requires special codegen support
+            preview.checkSourceLevel(pos, Feature.VALUE_CLASSES);
+            if (context.ctorPrologue() && env.enclMethod != null) {
+                // Track the early read for codegen
+                localProxyVarsGen.addFieldReadInPrologue(env.enclMethod, field);
+            }
         }
         return true;
     }
 
+    /** Return a symbol modeling the early access, and warn if necessary */
     private Symbol earlyRefResult(DiagnosticPosition pos, EarlyConstructionContext context, Symbol sym,
                                   boolean initializedFieldAssignment) {
         if (context.onlyWarnings()) {

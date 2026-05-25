@@ -1244,7 +1244,7 @@ public class Attr extends JCTree.Visitor {
                 localEnv.info.earlyConstruction = isConstructor && owner.type != syms.objectType ?
                         EarlyConstructionContext.of(owner,
                                 addedSuperInIdentityClass && allowValueClasses,
-                                hasThisConstructorCall) :
+                                hasThisConstructorCall && allowValueClasses) :
                         methodEarlyConstruction;
 
                 // Attribute method body.

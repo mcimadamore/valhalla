@@ -26,27 +26,28 @@
 package com.sun.tools.javac.comp;
 
 import com.sun.tools.javac.code.Symbol.ClassSymbol;
-import com.sun.tools.javac.code.Symbol.VarSymbol;
 import com.sun.tools.javac.tree.JCTree.JCExpression;
 
-import static com.sun.tools.javac.code.Flags.HASINIT;
-
-/** Early-construction state carried by attribution environments. */
+/**
+ * This record models early construction context state. Instances are stored inside
+ * a field of AttrContext, which is updated accordingly by Attr so that e.g. early field
+ * references are disallowed when inside a lambda
+ */
 record EarlyConstructionContext(ClassSymbol owner,
                                 boolean onlyWarnings,
-                                boolean disallowEarlyReads,
+                                boolean restricted,
                                 boolean ctorPrologue,
                                 JCExpression fieldAccessBase) {
 
-    static final EarlyConstructionContext NONE = new EarlyConstructionContext(null, false, false, false, null);
+    static final EarlyConstructionContext NONE =
+            new EarlyConstructionContext(null, false, false, false, null);
 
     // Root early contexts
 
     static EarlyConstructionContext of(ClassSymbol owner,
                                        boolean onlyWarnings,
-                                       boolean disallowEarlyReads) {
-        return new EarlyConstructionContext(owner, onlyWarnings, disallowEarlyReads, !onlyWarnings,
-                null);
+                                       boolean restricted) {
+        return new EarlyConstructionContext(owner, onlyWarnings, restricted, !onlyWarnings, null);
     }
 
     // Derived early contexts (used by Attr)
@@ -63,20 +64,6 @@ record EarlyConstructionContext(ClassSymbol owner,
         if (this == NONE) {
             return this;
         }
-        return new EarlyConstructionContext(owner, onlyWarnings, disallowEarlyReads, ctorPrologue,
-                base);
-    }
-
-    // predicates (used by Resolve)
-
-    boolean shouldTrackEarlyReads() {
-        return !onlyWarnings && ctorPrologue;
-    }
-
-    boolean allowsFieldRead(VarSymbol field) {
-        return !disallowEarlyReads &&
-                (owner.isValueClass() ||
-                 onlyWarnings || // pretend fields are strict
-                 (field.flags_field & HASINIT) == 0);
+        return new EarlyConstructionContext(owner, onlyWarnings, restricted, ctorPrologue, base);
     }
 }

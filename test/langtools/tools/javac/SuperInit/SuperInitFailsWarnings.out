@@ -5,6 +5,7 @@ SuperInitFails.java:137:9: compiler.err.non.canonical.constructor.invoke.another
 SuperInitFails.java:142:9: compiler.err.non.canonical.constructor.invoke.another.constructor: SuperInitFails.Record2
 SuperInitFails.java:159:50: compiler.err.cant.ref.before.ctor.called: x
 SuperInitFails.java:163:15: compiler.err.cant.ref.before.ctor.called: this
+SuperInitFails.java:199:36: compiler.err.cant.ref.before.ctor.called: xx
 SuperInitFails.java:215:33: compiler.err.ctor.calls.not.allowed.here
 SuperInitFails.java:255:13: compiler.err.cant.ref.before.ctor.called: x
 SuperInitFails.java:268:18: compiler.err.cant.ref.before.ctor.called: x
