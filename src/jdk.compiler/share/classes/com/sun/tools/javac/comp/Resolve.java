@@ -3921,8 +3921,7 @@ public class Resolve {
                             sym = earlyRefResult(pos, context, sym, false);
                         }
                     }
-                    return accessBase(sym, pos, env.enclClass.sym.type,
-                            name, true);
+                    return sym;
                 }
             }
             if ((env1.enclClass.sym.flags() & STATIC) != 0) staticOnly = true;
@@ -3934,14 +3933,15 @@ public class Resolve {
             //this might be a default super call if one of the superinterfaces is 'c'
             for (Type t : pruneInterfaces(env.enclClass.type)) {
                 if (t.tsym == c) {
+                    Symbol sym = new VarSymbol(0, names._super,
+                            types.asSuper(env.enclClass.type, c), env.enclClass.sym);
                     EarlyConstructionContext context = env.info.earlyConstruction;
                     if (context != EarlyConstructionContext.NONE) {
                         preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
-                        logEarlyReference(pos, context, name);
+                        sym = earlyRefResult(pos, context, sym, false);
                     }
                     env.info.defaultSuperCallSite = t;
-                    return new VarSymbol(0, names._super,
-                            types.asSuper(env.enclClass.type, c), env.enclClass.sym);
+                    return sym;
                 }
             }
             //find a direct supertype that is a subtype of 'c'
@@ -4076,14 +4076,6 @@ public class Resolve {
             return sym;
         }
         return new RefBeforeCtorCalledError(sym, initializedFieldAssignment);
-    }
-
-    private void logEarlyReference(DiagnosticPosition pos, EarlyConstructionContext context, Name name) {
-        if (context.onlyWarnings) {
-            log.warning(pos, LintWarnings.WouldNotBeAllowedInPrologue(name));
-        } else {
-            log.error(pos, Errors.CantRefBeforeCtorCalled(name));
-        }
     }
 
 /* ***************************************************************************
