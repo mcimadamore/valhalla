@@ -32,75 +32,42 @@ import com.sun.tools.javac.tree.JCTree.JCExpression;
 import static com.sun.tools.javac.code.Flags.HASINIT;
 
 /** Early-construction state carried by attribution environments. */
-class EarlyConstructionContext {
+record EarlyConstructionContext(ClassSymbol owner,
+                                boolean onlyWarnings,
+                                boolean disallowEarlyReads,
+                                boolean ctorPrologue,
+                                JCExpression fieldAccessBase) {
 
-    // A dummy early construction context
-    static final EarlyConstructionContext NONE =
-            new EarlyConstructionContext(null, false, false, false, false, null) {
-                @Override
-                EarlyConstructionContext nested(boolean isClass) {
-                    return this;
-                }
-
-                @Override
-                EarlyConstructionContext fieldAccess(JCExpression base) {
-                    return this;
-                }
-            };
-
-    final ClassSymbol owner;
-    final boolean onlyWarnings;
-    final boolean disallowEarlyReads;
-    final boolean ctorPrologue;
-    final boolean initializer;
-
-    private final JCExpression fieldAccessBase;
-
-    private EarlyConstructionContext(ClassSymbol owner,
-                                     boolean onlyWarnings,
-                                     boolean disallowEarlyReads,
-                                     boolean ctorPrologue,
-                                     boolean initializer,
-                                     JCExpression fieldAccessBase) {
-        this.owner = owner;
-        this.onlyWarnings = onlyWarnings;
-        this.disallowEarlyReads = disallowEarlyReads;
-        this.ctorPrologue = ctorPrologue;
-        this.initializer = initializer;
-        this.fieldAccessBase = fieldAccessBase;
-    }
+    static final EarlyConstructionContext NONE = new EarlyConstructionContext(null, false, false, false, null);
 
     // Root early contexts
 
-    static EarlyConstructionContext ofConstructor(ClassSymbol owner,
-                                                  boolean onlyWarnings,
-                                                  boolean disallowEarlyReads) {
+    static EarlyConstructionContext of(ClassSymbol owner,
+                                       boolean onlyWarnings,
+                                       boolean disallowEarlyReads) {
         return new EarlyConstructionContext(owner, onlyWarnings, disallowEarlyReads, !onlyWarnings,
-                false, null);
-    }
-
-    static EarlyConstructionContext ofFieldInitializer(VarSymbol field) {
-        return new EarlyConstructionContext((ClassSymbol)field.owner, !field.isStrict(), false,
-                field.isStrict(), true, null);
+                null);
     }
 
     // Derived early contexts (used by Attr)
 
     EarlyConstructionContext nested(boolean isClass) {
+        if (this == NONE) {
+            return this;
+        }
         return new EarlyConstructionContext(owner, onlyWarnings, true,
-                !isClass && ctorPrologue, initializer, null);
+                !isClass && ctorPrologue, null);
     }
 
     EarlyConstructionContext fieldAccess(JCExpression base) {
+        if (this == NONE) {
+            return this;
+        }
         return new EarlyConstructionContext(owner, onlyWarnings, disallowEarlyReads, ctorPrologue,
-                initializer, base);
+                base);
     }
 
     // predicates (used by Resolve)
-
-    JCExpression fieldAccessBase() {
-        return fieldAccessBase;
-    }
 
     boolean shouldTrackEarlyReads() {
         return !onlyWarnings && ctorPrologue;
@@ -108,10 +75,8 @@ class EarlyConstructionContext {
 
     boolean allowsFieldRead(VarSymbol field) {
         return !disallowEarlyReads &&
-                field.owner == owner &&
                 (owner.isValueClass() ||
                  onlyWarnings || // pretend fields are strict
-                 (field.flags_field & HASINIT) == 0 ||
-                 initializer);
+                 (field.flags_field & HASINIT) == 0);
     }
 }

@@ -1536,9 +1536,13 @@ public class Resolve {
                 if (sym.kind == VAR &&
                         sym.owner.kind == TYP &&
                         (sym.flags() & STATIC) == 0) {
-                    Symbol earlySym = checkEarlyFieldRef(pos, env1, null, (VarSymbol)sym, writeOnlyTarget);
-                    if (earlySym != sym) {
-                        return earlySym;
+                    EarlyConstructionContext context = env1.info.earlyConstruction;
+                    if (context != EarlyConstructionContext.NONE) {
+                        Symbol earlySym = checkEarlyFieldRef(pos, env1, null, (VarSymbol)sym,
+                                writeOnlyTarget);
+                        if (earlySym != sym) {
+                            return earlySym;
+                        }
                     }
                     if (staticOnly)
                         return new StaticError(sym);
@@ -2051,8 +2055,8 @@ public class Resolve {
                             return new StaticError(sym);
                         if (env1 == env) {
                             EarlyConstructionContext context = env1.info.earlyConstruction;
-                            if (env1.enclClass.sym == context.owner &&
-                                    sym.isMemberOf(context.owner, types)) {
+                            if (env1.enclClass.sym == context.owner() &&
+                                    sym.isMemberOf(context.owner(), types)) {
                                 return earlyRefResult(methodInvocationTarget(env), context, sym, false);
                             }
                         }
@@ -2566,7 +2570,8 @@ public class Resolve {
                            Name name, KindSelector kind) {
         try {
             Symbol sym = findIdentInTypeInternal(env, site, name, kind);
-            JCTree base = env.info.earlyConstruction.fieldAccessBase();
+            EarlyConstructionContext context = env.info.earlyConstruction;
+            JCTree base = context.fieldAccessBase();
             if (base != null &&
                     sym.kind == VAR &&
                     sym.owner.kind == TYP) {
@@ -3847,7 +3852,7 @@ public class Resolve {
                     if (staticOnly) {
                         // current class is not an inner class, stop search
                         return new StaticError(sym);
-                    } else if (env1.enclClass.sym == env1.info.earlyConstruction.owner) {
+                    } else if (env1.enclClass.sym == env1.info.earlyConstruction.owner()) {
                         return earlyRefResult(pos, env1.info.earlyConstruction, sym, false);
                     } else {
                         // found it
@@ -3913,9 +3918,7 @@ public class Resolve {
                         sym = new StaticError(sym);
                     else {
                         EarlyConstructionContext context = env1.info.earlyConstruction;
-                        if (context != EarlyConstructionContext.NONE &&
-                                env.info.earlyConstruction != EarlyConstructionContext.NONE &&
-                                sym.owner == context.owner &&
+                        if (sym.owner == context.owner() &&
                                 !isReceiverParameter(env, tree)) {
                             preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
                             sym = earlyRefResult(pos, context, sym, false);
@@ -3984,49 +3987,29 @@ public class Resolve {
 
     private Symbol checkEarlyFieldRef(DiagnosticPosition pos, Env<AttrContext> env, JCTree base, VarSymbol field, boolean writeOnlyTarget) {
         EarlyConstructionContext context = env.info.earlyConstruction;
-        if (field.name == names._this || field.name == names._super) {
-            if (context == EarlyConstructionContext.NONE || field.owner != context.owner) {
-                return field;
-            }
-            preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
-            return earlyRefResult(pos, context, field, false);
-        }
-        return isEarlyFieldRefAllowed(pos, env, base, field, writeOnlyTarget) ?
+        Assert.check(context != EarlyConstructionContext.NONE);
+        boolean earlyRefOk = base != null ?
+                isQualifiedEarlyRefAllowed(pos, env, context, base, field, writeOnlyTarget) :
+                isSimpleEarlyFieldRefAllowed(pos, env, context, field, writeOnlyTarget);
+        return earlyRefOk ?
                 field :
                 earlyRefResult(pos, context, field,
-                        writeOnlyTarget && (field.flags_field & HASINIT) != 0);
+                            writeOnlyTarget && (field.flags_field & HASINIT) != 0);
     }
 
-    /** 6.5.6.1: early field references are restricted to the current class fields. */
-    private boolean isEarlyFieldRefAllowed(DiagnosticPosition pos,
-                                           Env<AttrContext> env,
-                                           JCTree base,
-                                           VarSymbol field,
-                                           boolean writeOnlyTarget) {
-        EarlyConstructionContext context = env.info.earlyConstruction;
-        if (context == EarlyConstructionContext.NONE) {
-            // not in an early context
-            return true;
-        }
-        return (base != null) ?
-                isQualifiedEarlyFieldRefAllowed(pos, env, context, base, field, writeOnlyTarget) :
-                isSimpleEarlyFieldRefAllowed(pos, env, context, field, writeOnlyTarget);
-    }
-
-    /** 15.8.3/15.8.4: early this can only qualify allowed instance field accesses. */
-    private boolean isQualifiedEarlyFieldRefAllowed(DiagnosticPosition pos,
-                                                    Env<AttrContext> env,
-                                                    EarlyConstructionContext context,
-                                                    JCTree base,
-                                                    VarSymbol field,
-                                                    boolean writeOnlyTarget) {
-        if (!TreeInfo.isExplicitThisReference(types, (ClassType)context.owner.type, base)) {
+    /** Early qualified references are restricted to fields selected from early this/super. */
+    private boolean isQualifiedEarlyRefAllowed(DiagnosticPosition pos,
+                                               Env<AttrContext> env,
+                                               EarlyConstructionContext context,
+                                               JCTree base,
+                                               VarSymbol field,
+                                               boolean writeOnlyTarget) {
+        if (!TreeInfo.isExplicitThisReference(types, (ClassType)context.owner().type, base)) {
             // Foo.this.x, where Foo is unrelated, ignore
             return true;
         }
         if (field.isStatic()) {
             // early this can only qualify instance field accesses
-            preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
             return false;
         }
         return isSimpleEarlyFieldRefAllowed(pos, env, context, field, writeOnlyTarget);
@@ -4037,17 +4020,20 @@ public class Resolve {
                                                  Env<AttrContext> env,
                                                  EarlyConstructionContext context,
                                                  VarSymbol field,
-                                                 boolean writeOnlyTarget) {
+        boolean writeOnlyTarget) {
+        if (field.name == names._this || field.name == names._super) {
+            return field.owner != context.owner();
+        }
         if (field.isStatic()) {
             // simple-name static field access does not depend on the early object
             return true;
         }
-        if (!field.isMemberOf(context.owner, types)) {
+        if (!field.isMemberOf(context.owner(), types)) {
             // instance field is not a member of the class whose constructor we're in
             return true;
         }
         preview.checkSourceLevel(pos, Feature.FLEXIBLE_CONSTRUCTORS);
-        if (field.owner != context.owner) {
+        if (field.owner != context.owner()) {
             // field is a member of the class whose constructor we're in, but is not declared there
             return false;
         }
@@ -4055,7 +4041,7 @@ public class Resolve {
             boolean hasInit = (field.flags_field & HASINIT) != 0;
             return hasInit ?
                     field.isFinal() :        // let Attr.checkAssignable report initialized final field writes
-                    !context.disallowEarlyReads; // nested/restricted contexts reject early writes too
+                    !context.disallowEarlyReads(); // nested/restricted contexts reject early writes too
         }
         if (!context.allowsFieldRead(field)) {
             // early reads disabled in this context
@@ -4071,7 +4057,7 @@ public class Resolve {
 
     private Symbol earlyRefResult(DiagnosticPosition pos, EarlyConstructionContext context, Symbol sym,
                                   boolean initializedFieldAssignment) {
-        if (context.onlyWarnings) {
+        if (context.onlyWarnings()) {
             log.warning(pos, LintWarnings.WouldNotBeAllowedInPrologue(sym));
             return sym;
         }

@@ -299,7 +299,8 @@ public class MemberEnter extends JCTree.Visitor {
                 initEnv.info.enclVar = v;
                 initEnv = initEnv(tree, initEnv);
                 if (v.owner.kind == TYP && !v.isStatic() && allowValueClasses) {
-                    initEnv.info.earlyConstruction = EarlyConstructionContext.ofFieldInitializer(v);
+                    initEnv.info.earlyConstruction = EarlyConstructionContext.of((ClassSymbol)v.owner,
+                            !v.isStrict(), false);
                 }
                 v.setLazyConstValue(initEnv(tree, initEnv), env, attr, tree);
             }

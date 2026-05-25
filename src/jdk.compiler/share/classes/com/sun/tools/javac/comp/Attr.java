@@ -973,7 +973,7 @@ public class Attr extends JCTree.Visitor {
                 // If a class declaration appears in a constructor prologue,
                 // that means it's either a local class or an anonymous class.
                 // Either way, there is no immediately enclosing instance.
-                if (earlyConstructionPrev.ctorPrologue) {
+                if (earlyConstructionPrev.ctorPrologue()) {
                     c.flags_field |= NOOUTERTHIS;
                 }
                 attribClass(tree.pos(), c);
@@ -1242,7 +1242,7 @@ public class Attr extends JCTree.Visitor {
                         TreeInfo.hasConstructorCall(tree, names._this);
                 EarlyConstructionContext methodEarlyConstruction = localEnv.info.earlyConstruction;
                 localEnv.info.earlyConstruction = isConstructor && owner.type != syms.objectType ?
-                        EarlyConstructionContext.ofConstructor(owner,
+                        EarlyConstructionContext.of(owner,
                                 addedSuperInIdentityClass && allowValueClasses,
                                 hasThisConstructorCall) :
                         methodEarlyConstruction;
@@ -1324,7 +1324,8 @@ public class Attr extends JCTree.Visitor {
                     EarlyConstructionContext previousEarlyConstruction = initEnv.info.earlyConstruction;
                     try {
                         if (v.owner.kind == TYP && !v.isStatic() && allowValueClasses) {
-                            initEnv.info.earlyConstruction = EarlyConstructionContext.ofFieldInitializer(v);
+                            initEnv.info.earlyConstruction = EarlyConstructionContext.of((ClassSymbol)v.owner,
+                                    !v.isStrict(), false);
                         }
                         attribExpr(tree.init, initEnv, v.type);
                         if (tree.isImplicitlyTyped()) {
@@ -2591,7 +2592,7 @@ public class Attr extends JCTree.Visitor {
             typeargtypes = attribTypes(tree.typeargs, localEnv);
 
             // Done with this()/super() parameters. End of constructor prologue.
-            if (!env.info.earlyConstruction.onlyWarnings) {
+            if (!env.info.earlyConstruction.onlyWarnings()) {
                 env.info.earlyConstruction = EarlyConstructionContext.NONE;
             }
 
