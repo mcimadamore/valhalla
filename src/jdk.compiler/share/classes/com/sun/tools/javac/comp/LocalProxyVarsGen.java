@@ -33,11 +33,9 @@ import java.util.Map;
 import java.util.Set;
 
 import com.sun.tools.javac.code.Symbol;
-import com.sun.tools.javac.code.Symbol.ClassSymbol;
 import com.sun.tools.javac.code.Symbol.VarSymbol;
 import com.sun.tools.javac.code.Symtab;
 import com.sun.tools.javac.code.Types;
-import com.sun.tools.javac.tree.JCTree.JCAssign;
 import com.sun.tools.javac.tree.JCTree.JCExpression;
 import com.sun.tools.javac.tree.JCTree.JCMethodDecl;
 import com.sun.tools.javac.tree.JCTree.JCVariableDecl;
@@ -90,8 +88,6 @@ public class LocalProxyVarsGen extends TreeTranslator {
     private final Symtab syms;
     private final Target target;
     private TreeMaker make;
-    private final UnsetFieldsInfo unsetFieldsInfo;
-    private ClassSymbol currentClass = null;
     private java.util.List<JCVariableDecl> instanceFields;
     private Map<JCMethodDecl, Set<Symbol>> fieldsReadInPrologue = new HashMap<>();
     public Map<JCMethodDecl, Set<Symbol>> initializersAlreadyInConst = new HashMap<>();
@@ -106,7 +102,6 @@ public class LocalProxyVarsGen extends TreeTranslator {
         names = Names.instance(context);
         syms = Symtab.instance(context);
         target = Target.instance(context);
-        unsetFieldsInfo = UnsetFieldsInfo.instance(context);
         Options options = Options.instance(context);
         noLocalProxyVars = options.isSet("noLocalProxyVars");
     }
@@ -140,10 +135,8 @@ public class LocalProxyVarsGen extends TreeTranslator {
 
     @Override
     public void visitClassDef(JCClassDecl tree) {
-        ClassSymbol prevCurrentClass = currentClass;
         java.util.List<JCVariableDecl> prevInstanceFields = instanceFields;
         try {
-            currentClass = tree.sym;
             instanceFields = tree.defs.stream()
                     .filter(t -> t.hasTag(VARDEF))
                     .map(t -> (JCVariableDecl)t)
@@ -151,7 +144,6 @@ public class LocalProxyVarsGen extends TreeTranslator {
                     .collect(List.collector());
             super.visitClassDef(tree);
         } finally {
-            currentClass = prevCurrentClass;
             instanceFields = prevInstanceFields;
         }
     }
@@ -263,15 +255,6 @@ public class LocalProxyVarsGen extends TreeTranslator {
                 result = make.at(md).Ident(fieldToLocalMap.get(tree.sym));
             } else {
                 result = tree;
-            }
-        }
-
-        @Override
-        public void visitAssign(JCAssign tree) {
-            JCExpression previousLHS = tree.lhs;
-            super.visitAssign(tree);
-            if (ctorPrologue && previousLHS != tree.lhs) {
-                unsetFieldsInfo.removeUnsetFieldInfo(currentClass, tree);
             }
         }
 

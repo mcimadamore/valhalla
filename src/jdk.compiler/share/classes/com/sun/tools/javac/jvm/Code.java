@@ -31,6 +31,9 @@ import com.sun.tools.javac.resources.CompilerProperties.Errors;
 import com.sun.tools.javac.util.*;
 import com.sun.tools.javac.util.JCDiagnostic.DiagnosticPosition;
 
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.function.ToIntBiFunction;
 
 import static com.sun.tools.javac.code.TypeTag.ARRAY;
@@ -42,10 +45,6 @@ import static com.sun.tools.javac.code.TypeTag.TYPEVAR;
 import static com.sun.tools.javac.jvm.ByteCodes.*;
 import static com.sun.tools.javac.jvm.UninitializedType.*;
 import static com.sun.tools.javac.jvm.ClassWriter.StackMapTableFrame;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Set;
 
 /** An internal structure that corresponds to the code attribute of
  *  methods in a classfile. The class also provides some utility operations to
@@ -190,11 +189,9 @@ public class Code {
 
     private int letExprStackPos = 0;
 
-    private Map<Integer, Set<VarSymbol>> cpToUnsetFieldsMap = new HashMap<>();
+    private VarSymbol[] strictFields = new VarSymbol[20];
 
-    public Set<VarSymbol> initialUnsetFields;
-
-    public Set<VarSymbol> currentUnsetFields;
+    private Bits initialUnsetStrictFields = new Bits();
 
     boolean generateEarlyLarvalFrame;
 
@@ -1057,7 +1054,16 @@ public class Code {
             markDead();
             break;
         case putfield:
-            state.pop(((Symbol)data).erasure(types));
+            Symbol field = (Symbol)data;
+            Type fieldType = field.erasure(types);
+            state.pop(fieldType);
+            if (field instanceof VarSymbol var &&
+                    var.isStrictInstance() &&
+                    var.owner == meth.owner &&
+                    var.adr >= 0 &&
+                    state.peek().hasTag(TypeTag.UNINITIALIZED_THIS)) {
+                state.unsetStrictFields.excl(var.adr);
+            }
             state.pop(1); // object ref
             break;
         case getfield:
@@ -1362,8 +1368,8 @@ public class Code {
             }
         }
 
-        Set<VarSymbol> unsetFieldsAtPC = cpToUnsetFieldsMap.get(pc);
-        boolean encloseWithEarlyLarvalFrame = unsetFieldsAtPC != null && generateEarlyLarvalFrame && hasUninitalizedThis
+        Set<VarSymbol> unsetFieldsAtPC = unsetStrictFields(state.unsetStrictFields);
+        boolean encloseWithEarlyLarvalFrame = generateEarlyLarvalFrame && hasUninitalizedThis
                 && !lastFrame.unsetFields.equals(unsetFieldsAtPC);
 
         if (stackMapTableBuffer == null) {
@@ -1379,16 +1385,12 @@ public class Code {
             tableFrame = new StackMapTableFrame.EarlyLarvalFrame(tableFrame, unsetFieldsAtPC);
             frame.unsetFields = unsetFieldsAtPC;
         } else {
-            frame.unsetFields = lastFrame.unsetFields;
+            frame.unsetFields = unsetFieldsAtPC;
         }
         stackMapTableBuffer[stackMapBufferSize++] = tableFrame;
 
         frameBeforeLast = lastFrame;
         lastFrame = frame;
-    }
-
-    public void addUnsetFieldsAtPC(int pc, Set<VarSymbol> unsetFields) {
-        cpToUnsetFieldsMap.put(pc, unsetFields);
     }
 
     StackMapFrame getInitialFrame() {
@@ -1412,8 +1414,26 @@ public class Code {
         }
         frame.pc = -1;
         frame.stack = null;
-        frame.unsetFields = initialUnsetFields;
+        frame.unsetFields = unsetStrictFields(initialUnsetStrictFields);
         return frame;
+    }
+
+    public void markStrictFieldUnset(VarSymbol sym) {
+        Assert.check(sym.adr >= 0, "Strict field without an address: " + sym);
+        strictFields = ArrayUtils.ensureCapacity(strictFields, sym.adr);
+        strictFields[sym.adr] = sym;
+        state.unsetStrictFields.incl(sym.adr);
+        initialUnsetStrictFields.incl(sym.adr);
+    }
+
+    Set<VarSymbol> unsetStrictFields(Bits unsetStrictFields) {
+        Set<VarSymbol> result = new LinkedHashSet<>();
+        for (int adr = unsetStrictFields.nextBit(0); adr >= 0; adr = unsetStrictFields.nextBit(adr + 1)) {
+            Assert.check(adr < strictFields.length && strictFields[adr] != null,
+                    "No strict field registered for address: " + adr);
+            result.add(strictFields[adr]);
+        }
+        return result;
     }
 
 
@@ -1491,9 +1511,6 @@ public class Code {
             result = new Chain(emitJump(opcode),
                                result,
                                state.dup());
-            if (currentUnsetFields != null) {
-                addUnsetFieldsAtPC(result.pc, currentUnsetFields);
-            }
             fixedPc = fatcode;
             if (opcode == goto_) alive = false;
         }
@@ -1534,18 +1551,12 @@ public class Code {
             } else {
                 if (fatcode) {
                     put4(chain.pc + 1, target - chain.pc);
-                    if (cpToUnsetFieldsMap.get(chain.pc) != null) {
-                        addUnsetFieldsAtPC(originalTarget, cpToUnsetFieldsMap.get(chain.pc));
-                    }
                 }
                 else if (target - chain.pc < Short.MIN_VALUE ||
                          target - chain.pc > Short.MAX_VALUE)
                     fatcode = true;
                 else {
                     put2(chain.pc + 1, target - chain.pc);
-                    if (cpToUnsetFieldsMap.get(chain.pc) != null) {
-                        addUnsetFieldsAtPC(originalTarget, cpToUnsetFieldsMap.get(chain.pc));
-                    }
                 }
                 Assert.check(!alive ||
                     chain.state.stacksize == newState.stacksize &&
@@ -1700,15 +1711,20 @@ public class Code {
         int[] locks;
         int nlocks;
 
+        /** Strict instance fields of this under construction that may still be unset. */
+        Bits unsetStrictFields;
+
         State() {
             defined = new Bits();
             stack = new Type[16];
+            unsetStrictFields = new Bits();
         }
 
         State dup() {
             try {
                 State state = (State)super.clone();
                 state.defined = new Bits(defined);
+                state.unsetStrictFields = new Bits(unsetStrictFields);
                 state.stack = stack.clone();
                 if (locks != null) state.locks = locks.clone();
                 if (debugCode) {
@@ -1820,6 +1836,9 @@ public class Code {
 
         void markInitialized(UninitializedType old) {
             Type newtype = old.initializedType();
+            if (old.hasTag(TypeTag.UNINITIALIZED_THIS)) {
+                unsetStrictFields.clear();
+            }
             for (int i=0; i<stacksize; i++) {
                 if (stack[i] == old) stack[i] = newtype;
             }
@@ -1837,6 +1856,7 @@ public class Code {
 
         State join(State other) {
             defined.andSet(other.defined);
+            unsetStrictFields.orSet(other.unsetStrictFields);
             Assert.check(stacksize == other.stacksize
                     && nlocks == other.nlocks);
             for (int i=0; i<stacksize; ) {

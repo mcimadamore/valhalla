@@ -97,8 +97,6 @@ public class Gen extends JCTree.Visitor {
      */
     final PoolWriter poolWriter;
 
-    private final UnsetFieldsInfo unsetFieldsInfo;
-
     @SuppressWarnings("this-escape")
     protected Gen(Context context) {
         context.put(genKey, this);
@@ -130,7 +128,6 @@ public class Gen extends JCTree.Visitor {
         debugCode = options.isSet("debug.code");
         disableVirtualizedPrivateInvoke = options.isSet("disableVirtualizedPrivateInvoke");
         poolWriter = new PoolWriter(types, names);
-        unsetFieldsInfo = UnsetFieldsInfo.instance(context);
 
         // ignore cldc because we cannot have both stackmap formats
         this.stackMap = StackMapFormat.JSR202;
@@ -154,6 +151,8 @@ public class Gen extends JCTree.Visitor {
     /** Code buffer, set by genMethod.
      */
     private Code code;
+
+    private List<VarSymbol> currentStrictFields = List.nil();
 
     /** Items structure, set by genMethod.
      */
@@ -1021,11 +1020,6 @@ public class Gen extends JCTree.Visitor {
             else if (tree.body != null) {
                 // Create a new code structure and initialize it.
                 int startpcCrt = initCode(tree, env, fatcode);
-                Set<VarSymbol> prevUnsetFields = code.currentUnsetFields;
-                if (meth.isConstructor()) {
-                    code.currentUnsetFields = unsetFieldsInfo.getUnsetFields(env.enclClass.sym, tree.body);
-                    code.initialUnsetFields = unsetFieldsInfo.getUnsetFields(env.enclClass.sym, tree.body);
-                }
 
                 try {
                     genStat(tree.body, env);
@@ -1033,8 +1027,6 @@ public class Gen extends JCTree.Visitor {
                     // Failed due to code limit, try again with jsr/ret
                     startpcCrt = initCode(tree, env, fatcode);
                     genStat(tree.body, env);
-                } finally {
-                    code.currentUnsetFields = prevUnsetFields;
                 }
 
                 if (code.state.stacksize != 0) {
@@ -1127,6 +1119,10 @@ public class Gen extends JCTree.Visitor {
                 code.setDefined(code.newLocal(l.head.sym));
             }
 
+            if (meth.isConstructor()) {
+                markUnsetStrictFields();
+            }
+
             // Get ready to generate code for method body.
             int startpcCrt = genCrt ? code.curCP() : 0;
             code.entryPoint();
@@ -1135,6 +1131,21 @@ public class Gen extends JCTree.Visitor {
             code.pendingStackMap = false;
 
             return startpcCrt;
+        }
+
+        private void markUnsetStrictFields() {
+            int nextSyntheticAdr = 0;
+            for (VarSymbol field : currentStrictFields) {
+                if (field.adr >= 0) {
+                    nextSyntheticAdr = Math.max(nextSyntheticAdr, field.adr + 1);
+                }
+            }
+            for (VarSymbol field : currentStrictFields) {
+                if (field.adr < 0) {
+                    field.adr = nextSyntheticAdr++;
+                }
+                code.markStrictFieldUnset(field);
+            }
         }
 
     public void visitVarDef(JCVariableDecl tree) {
@@ -1239,12 +1250,7 @@ public class Gen extends JCTree.Visitor {
                              JCExpression cond,
                              List<JCExpressionStatement> step,
                              boolean testFirst) {
-            Set<VarSymbol> prevCodeUnsetFields = code.currentUnsetFields;
-            try {
-                genLoopHelper(loop, body, cond, step, testFirst);
-            } finally {
-                code.currentUnsetFields = prevCodeUnsetFields;
-            }
+            genLoopHelper(loop, body, cond, step, testFirst);
         }
 
         private void genLoopHelper(JCStatement loop,
@@ -1310,13 +1316,11 @@ public class Gen extends JCTree.Visitor {
     public void visitSwitchExpression(JCSwitchExpression tree) {
         code.resolvePending();
         boolean prevInCondSwitchExpression = inCondSwitchExpression;
-        Set<VarSymbol> prevCodeUnsetFields = code.currentUnsetFields;
         try {
             inCondSwitchExpression = false;
             doHandleSwitchExpression(tree);
         } finally {
             inCondSwitchExpression = prevInCondSwitchExpression;
-            code.currentUnsetFields = prevCodeUnsetFields;
         }
         result = items.makeStackItem(pt);
     }
@@ -1392,12 +1396,7 @@ public class Gen extends JCTree.Visitor {
 
     private void handleSwitch(JCTree swtch, JCExpression selector, List<JCCase> cases,
                               boolean patternSwitch) {
-        Set<VarSymbol> prevCodeUnsetFields = code.currentUnsetFields;
-        try {
-            handleSwitchHelper(swtch, selector, cases, patternSwitch);
-        } finally {
-            code.currentUnsetFields = prevCodeUnsetFields;
-        }
+        handleSwitchHelper(swtch, selector, cases, patternSwitch);
     }
 
     void handleSwitchHelper(JCTree swtch, JCExpression selector, List<JCCase> cases,
@@ -1650,12 +1649,7 @@ public class Gen extends JCTree.Visitor {
          *  @param env       The current environment of the body.
          */
         void genTry(JCTree body, List<JCCatch> catchers, Env<GenContext> env) {
-            Set<VarSymbol> prevCodeUnsetFields = code.currentUnsetFields;
-            try {
-                genTryHelper(body, catchers, env);
-            } finally {
-                code.currentUnsetFields = prevCodeUnsetFields;
-            }
+            genTryHelper(body, catchers, env);
         }
 
         void genTryHelper(JCTree body, List<JCCatch> catchers, Env<GenContext> env) {
@@ -1870,12 +1864,7 @@ public class Gen extends JCTree.Visitor {
         }
 
     public void visitIf(JCIf tree) {
-        Set<VarSymbol> prevCodeUnsetFields = code.currentUnsetFields;
-        try {
-            visitIfHelper(tree);
-        } finally {
-            code.currentUnsetFields = prevCodeUnsetFields;
-        }
+        visitIfHelper(tree);
     }
 
     public void visitIfHelper(JCIf tree) {
@@ -2207,8 +2196,6 @@ public class Gen extends JCTree.Visitor {
     public void visitAssign(JCAssign tree) {
         Item l = genExpr(tree.lhs, tree.lhs.type);
         genExpr(tree.rhs, tree.lhs.type).load();
-        Set<VarSymbol> tmpUnsetSymbols = unsetFieldsInfo.getUnsetFields(env.enclClass.sym, tree);
-        code.currentUnsetFields = tmpUnsetSymbols != null ? tmpUnsetSymbols : code.currentUnsetFields;
         if (tree.rhs.type.hasTag(BOT)) {
             /* This is just a case of widening reference conversion that per 5.1.5 simply calls
                for "regarding a reference as having some other type in a manner that can be proved
@@ -2591,10 +2578,12 @@ public class Gen extends JCTree.Visitor {
      *  @return      True if code is generated with no errors.
      */
     public boolean genClass(Env<AttrContext> env, JCClassDecl cdef) {
+        List<VarSymbol> prevStrictFields = currentStrictFields;
         try {
             attrEnv = env;
             ClassSymbol c = cdef.sym;
             this.toplevel = env.toplevel;
+            currentStrictFields = strictInstanceFields(cdef.defs);
             /* method normalizeDefs() can add references to external classes into the constant pool
              */
             cdef.defs = normalizeDefs(cdef.defs, c);
@@ -2621,12 +2610,26 @@ public class Gen extends JCTree.Visitor {
             return nerrs == 0;
         } finally {
             // note: this method does NOT support recursion.
+            currentStrictFields = prevStrictFields;
             attrEnv = null;
             this.env = null;
             toplevel = null;
             nerrs = 0;
             qualifiedSymbolCache.clear();
         }
+    }
+
+    private List<VarSymbol> strictInstanceFields(List<JCTree> defs) {
+        ListBuffer<VarSymbol> fields = new ListBuffer<>();
+        for (JCTree def : defs) {
+            if (def.hasTag(VARDEF)) {
+                VarSymbol field = ((JCVariableDecl) def).sym;
+                if (field.isStrictInstance()) {
+                    fields.add(field);
+                }
+            }
+        }
+        return fields.toList();
     }
 
 /* ************************************************************************
