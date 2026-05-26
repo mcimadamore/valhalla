@@ -47,7 +47,6 @@ import com.sun.tools.javac.comp.LocalProxyVarsGen;
 import com.sun.tools.javac.comp.Modules;
 import com.sun.tools.javac.file.JavacFileManager;
 import com.sun.tools.javac.main.JavaCompiler;
-import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.JCTree.*;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.Assert;
@@ -57,7 +56,6 @@ import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.Options;
 
 import static com.sun.tools.javac.util.List.of;
-import static com.sun.tools.javac.tree.JCTree.Tag.*;
 
 public class LocalProxyVariablesTests {
     ReusableJavaCompiler tool;
@@ -191,24 +189,20 @@ public class LocalProxyVariablesTests {
         }
 
         @Override
-        public JCTree translateTopLevelClass(JCTree cdef, TreeMaker make) {
-            JCClassDecl transformed = (JCClassDecl)super.translateTopLevelClass(cdef, make);
-            analyzeTransformedClass(transformed);
-            return transformed;
+        public boolean patchConstructorPrologue(TreeMaker make, JCMethodDecl constructor) {
+            boolean result = super.patchConstructorPrologue(make, constructor);
+            analyzeTransformedConstructor(constructor);
+            return result;
         }
 
-        /* we need to analyze the tree obtained from invoking `translateTopLevelClass` asap, we can't wait
+        /* we need to analyze the tree obtained from invoking `patchConstructorPrologue` asap, we can't wait
          * until the compilation ends as other phases continue transforming the AST
          */
-        void analyzeTransformedClass(JCClassDecl transformed) {
-            for (JCTree def : transformed.defs) {
-                if (def instanceof JCMethodDecl methodDecl && methodDecl.name.toString().equals("<init>")) {
-                    for (JCStatement stat : methodDecl.body.stats) {
-                        if (stat instanceof JCVariableDecl variableDecl && variableDecl.sym.isSynthetic()) {
-                            Assert.check(expectedProxyNames.contains(variableDecl.name.toString()));
-                            expectedProxyNames.remove(variableDecl.name.toString());
-                        }
-                    }
+        void analyzeTransformedConstructor(JCMethodDecl constructor) {
+            for (JCStatement stat : constructor.body.stats) {
+                if (stat instanceof JCVariableDecl variableDecl && variableDecl.sym.isSynthetic()) {
+                    Assert.check(expectedProxyNames.contains(variableDecl.name.toString()));
+                    expectedProxyNames.remove(variableDecl.name.toString());
                 }
             }
             Assert.check(expectedProxyNames.isEmpty());

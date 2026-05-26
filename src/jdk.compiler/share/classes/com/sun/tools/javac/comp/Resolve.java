@@ -115,7 +115,6 @@ public class Resolve {
     final EnumSet<VerboseResolutionMode> verboseResolutionMode;
     final boolean dumpMethodReferenceSearchResults;
     final boolean dumpStacktraceOnError;
-    private final LocalProxyVarsGen localProxyVarsGen;
 
     WriteableScope polymorphicSignatureScope;
 
@@ -155,7 +154,6 @@ public class Resolve {
         allowRecords = Feature.RECORDS.allowedInSource(source);
         dumpMethodReferenceSearchResults = options.isSet("debug.dumpMethodReferenceSearchResults");
         dumpStacktraceOnError = options.isSet("dev") || options.isSet(DOE);
-        localProxyVarsGen = LocalProxyVarsGen.instance(context);
     }
 
     /** error symbols, which are returned when resolution fails

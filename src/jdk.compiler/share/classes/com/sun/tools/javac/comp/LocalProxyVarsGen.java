@@ -25,10 +25,9 @@
 
 package com.sun.tools.javac.comp;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -48,20 +47,18 @@ import com.sun.tools.javac.util.Name;
 import com.sun.tools.javac.util.Names;
 
 import static com.sun.tools.javac.code.Flags.FINAL;
+import static com.sun.tools.javac.code.Flags.HASINIT;
 import static com.sun.tools.javac.code.Flags.SYNTHETIC;
 import static com.sun.tools.javac.code.TypeTag.BOT;
-import static com.sun.tools.javac.tree.JCTree.Tag.VARDEF;
-
 import com.sun.tools.javac.jvm.Target;
 import com.sun.tools.javac.tree.JCTree;
-import com.sun.tools.javac.tree.JCTree.JCClassDecl;
 import com.sun.tools.javac.tree.JCTree.JCStatement;
 import com.sun.tools.javac.tree.TreeInfo;
 import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.Options;
 
-/** This phase adds local variable proxies for fields that are read during the
- *  early construction phase (prologue)
+/** This helper adds local variable proxies for fields that are read during the
+ *  early construction phase (prologue).
  *
  *  Assignments to the affected instance fields will be rewritten as assignments to a
  *  local proxy variable. Fields will be assigned to with its corresponding local variable
@@ -72,7 +69,7 @@ import com.sun.tools.javac.util.Options;
  *  This code and its internal interfaces are subject to change or
  *  deletion without notice.</b>
  */
-public class LocalProxyVarsGen extends TreeTranslator {
+public class LocalProxyVarsGen {
 
     protected static final Context.Key<LocalProxyVarsGen> localProxyVarsGenKey = new Context.Key<>();
 
@@ -88,9 +85,7 @@ public class LocalProxyVarsGen extends TreeTranslator {
     private final Symtab syms;
     private final Target target;
     private TreeMaker make;
-    private java.util.List<JCVariableDecl> instanceFields;
-    private Map<JCMethodDecl, Set<Symbol>> fieldsReadInPrologue = new HashMap<>();
-    public Map<JCMethodDecl, Set<Symbol>> initializersAlreadyInConst = new HashMap<>();
+    private Map<JCMethodDecl, Set<VarSymbol>> fieldsReadInPrologue = new HashMap<>();
 
     private final boolean noLocalProxyVars;
 
@@ -108,81 +103,43 @@ public class LocalProxyVarsGen extends TreeTranslator {
 
     public void addFieldReadInPrologue(JCMethodDecl constructor, Symbol sym) {
         Assert.checkNonNull(sym, "parameter 'sym' is null");
-        Set<Symbol> fieldSet = fieldsReadInPrologue.getOrDefault(constructor, new HashSet<>());
-        fieldSet.add(sym);
+        Assert.check(sym instanceof VarSymbol, "Only fields can be proxied");
+        Set<VarSymbol> fieldSet = fieldsReadInPrologue.getOrDefault(constructor, new LinkedHashSet<>());
+        fieldSet.add((VarSymbol)sym);
         fieldsReadInPrologue.put(constructor, fieldSet);
     }
 
-    private void addIncludedInitializer(JCMethodDecl constructor, Symbol varSymbol) {
-        Set<Symbol> fieldSet = initializersAlreadyInConst.getOrDefault(constructor, new HashSet<>());
-        fieldSet.add(varSymbol);
-        initializersAlreadyInConst.put(constructor, fieldSet);
-    }
-
-    public JCTree translateTopLevelClass(JCTree cdef, TreeMaker make) {
-        if (!noLocalProxyVars) {
-            try {
-                this.make = make;
-                return translate(cdef);
-            } finally {
-                // note that recursive invocations of this method fail hard
-                this.make = null;
-            }
-        } else {
-            return cdef;
-        }
-    }
-
-    @Override
-    public void visitClassDef(JCClassDecl tree) {
-        java.util.List<JCVariableDecl> prevInstanceFields = instanceFields;
+    public boolean patchConstructorPrologue(TreeMaker make, JCMethodDecl constructor) {
+        TreeMaker prevMake = this.make;
         try {
-            instanceFields = tree.defs.stream()
-                    .filter(t -> t.hasTag(VARDEF))
-                    .map(t -> (JCVariableDecl)t)
-                    .filter(vd -> !vd.sym.isStatic())
-                    .collect(List.collector());
-            super.visitClassDef(tree);
-        } finally {
-            instanceFields = prevInstanceFields;
-        }
-    }
-
-    public void visitMethodDef(JCMethodDecl tree) {
-        if (fieldsReadInPrologue.get(tree) != null) {
-            Set<Symbol> fieldSet = fieldsReadInPrologue.get(tree);
-            java.util.List<JCVariableDecl> fieldsRead = new ArrayList<>();
-            for (JCVariableDecl field : instanceFields) {
-                if (fieldSet.contains(field.sym)) {
-                    fieldsRead.add(field);
-                }
+            this.make = make;
+            Set<VarSymbol> fieldSet = fieldsReadInPrologue.remove(constructor);
+            if (fieldSet == null || noLocalProxyVars) {
+                return false;
             }
-            addLocalProxiesFor(tree, fieldsRead);
-            fieldsReadInPrologue.remove(tree);
+            Assert.check(!fieldSet.isEmpty(), "Empty local proxy field set");
+            addLocalProxiesFor(constructor, fieldSet);
+            return true;
+        } finally {
+            this.make = prevMake;
         }
-        super.visitMethodDef(tree);
     }
 
-    void addLocalProxiesFor(JCMethodDecl constructor, java.util.List<JCVariableDecl> fields) {
+    void addLocalProxiesFor(JCMethodDecl constructor, Set<VarSymbol> fields) {
         ListBuffer<JCStatement> localDeclarations = new ListBuffer<>();
         Map<Symbol, Symbol> fieldToLocalMap = new LinkedHashMap<>();
 
-        for (JCVariableDecl fieldDecl : fields) {
+        for (VarSymbol field : fields) {
             long flags = SYNTHETIC;
-            VarSymbol proxy = new VarSymbol(flags, newLocalName(fieldDecl.name.toString()), fieldDecl.sym.erasure(types), constructor.sym);
-            fieldToLocalMap.put(fieldDecl.sym, proxy);
-            JCVariableDecl localDecl;
-            JCExpression initializer = fieldDecl.init;
-            if (initializer == null && !fieldDecl.sym.isFinal() && !fieldDecl.sym.isStrict()) {
-                initializer = fieldDecl.vartype.type.isPrimitive() ?
+            VarSymbol proxy = new VarSymbol(flags, newLocalName(field.name.toString()), field.erasure(types), constructor.sym);
+            fieldToLocalMap.put(field, proxy);
+            JCExpression initializer = null;
+            if ((field.flags() & HASINIT) == 0 && !field.isFinal() && !field.isStrict()) {
+                initializer = field.type.isPrimitive() ?
                                     make.at(constructor.pos).Literal(0) :
                                     make.at(constructor.pos).Literal(BOT, null).setType(syms.botType);
-            } else {
-                addIncludedInitializer(constructor, fieldDecl.sym);
             }
-            localDecl = make.at(constructor.pos).VarDef(proxy, initializer);
-            localDecl.vartype = fieldDecl.vartype;
-            localDeclarations = localDeclarations.append(localDecl);
+            localDeclarations = localDeclarations.append(make.at(constructor.pos).VarDef(proxy, initializer));
         }
 
         FieldRewriter fieldRewriter = new FieldRewriter(constructor, fieldToLocalMap);

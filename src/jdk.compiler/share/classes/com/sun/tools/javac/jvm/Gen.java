@@ -487,12 +487,15 @@ public class Gen extends JCTree.Visitor {
             }
         }
         // Insert any instance initializers into all constructors.
+        List<JCStatement> initCodeList = initCode.toList();
+        List<JCStatement> initBlocksList = initBlocks.toList();
+        List<Attribute.TypeCompound> initTAlist = List.nil();
         if (initCode.length() != 0 || initBlocks.length() != 0) {
             initTAs.addAll(c.getInitTypeAttributes());
-            List<Attribute.TypeCompound> initTAlist = initTAs.toList();
-            for (JCTree t : methodDefs) {
-                normalizeMethod((JCMethodDecl)t, initCode.toList(), initBlocks.toList(), initTAlist);
-            }
+            initTAlist = initTAs.toList();
+        }
+        for (JCTree t : methodDefs) {
+            normalizeMethod((JCMethodDecl)t, initCodeList, initBlocksList, initTAlist);
         }
         // If there are class initializers, create a <clinit> method
         // that contains them as its body.
@@ -548,42 +551,37 @@ public class Gen extends JCTree.Visitor {
         nerrs++;
     }
 
-    /** Insert instance initializer code into constructors prior to the super() call.
+    /** Insert instance initializer code into constructors.
      *  @param md        The tree potentially representing a
      *                   constructor's definition.
      *  @param initCode  The list of instance initializer statements.
      *  @param initTAs  Type annotations from the initializer expression.
      */
-    void normalizeMethod(JCMethodDecl md, List<JCStatement> initCode, List<JCStatement> initBlocks,  List<TypeCompound> initTAs) {
-        Set<Symbol> fieldsWithInits;
-        List<JCStatement> inits;
-        if ((fieldsWithInits = localProxyVarsGen.initializersAlreadyInConst.get(md)) != null) {
-            ListBuffer<JCStatement> newInitCode = new ListBuffer<>();
-            for (JCStatement init : initCode) {
-                Symbol sym = ((JCIdent)((JCAssign)((JCExpressionStatement)init).expr).lhs).sym;
-                if (!fieldsWithInits.contains(sym)) {
-                    newInitCode.add(init);
-                }
-            }
-            inits = newInitCode.toList();
-            localProxyVarsGen.initializersAlreadyInConst.remove(md);
-        } else {
-            inits = initCode;
-        }
+    void normalizeMethod(JCMethodDecl md, List<JCStatement> initCode,
+                         List<JCStatement> initBlocks, List<TypeCompound> initTAs) {
         if (TreeInfo.isConstructor(md) && TreeInfo.hasConstructorCall(md, names._super)) {
             // We are seeing a constructor that has a super() call.
             // Find the super() invocation and append the given initializer code.
-            if (allowValueClasses & (md.sym.owner.isValueClass() || ((md.sym.owner.flags_field & RECORD) != 0))) {
-                md.body.stats = inits.appendList(md.body.stats);
-                TreeInfo.flatMapSuperCalls(md.body, supercall -> initBlocks.prepend(supercall));
-            } else {
-                TreeInfo.flatMapSuperCalls(md.body, supercall -> inits.prepend(supercall));
+            if (initCode.nonEmpty() || initBlocks.nonEmpty()) {
+                if (allowValueClasses & (md.sym.owner.isValueClass() || ((md.sym.owner.flags_field & RECORD) != 0))) {
+                    // a value class, or record
+                    // add early initializers, then super, then instance block inits
+                    md.body.stats = initCode.appendList(md.body.stats);
+                    TreeInfo.flatMapSuperCalls(md.body, supercall -> initBlocks.prepend(supercall));
+                } else {
+                    // otherwise, just add all initializers after the super call
+                    TreeInfo.flatMapSuperCalls(md.body, supercall -> initCode.prepend(supercall));
+                }
+
+                md.sym.appendUniqueTypeAttributes(initTAs);
             }
 
-            if (md.body.bracePos == Position.NOPOS)
-                md.body.bracePos = TreeInfo.endPos(md.body.stats.last());
+            // Rewrite generated and explicit early field accesses through local proxies.
+            boolean proxiesAdded = localProxyVarsGen.patchConstructorPrologue(make, md);
 
-            md.sym.appendUniqueTypeAttributes(initTAs);
+            if ((proxiesAdded || initCode.nonEmpty() || initBlocks.nonEmpty()) &&
+                    md.body.bracePos == Position.NOPOS)
+                md.body.bracePos = TreeInfo.endPos(md.body.stats.last());
         }
     }
 
