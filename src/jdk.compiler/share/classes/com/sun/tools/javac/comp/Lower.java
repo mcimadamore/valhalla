@@ -196,10 +196,6 @@ public class Lower extends TreeTranslator {
      */
     JCTree outermostMemberDef;
 
-    /** A hash table mapping local classes to a set of outer this fields
-     */
-    public Map<ClassSymbol, Set<JCExpression>> initializerOuterThis = new WeakHashMap<>();
-
     /** A navigator class for assembling a mapping from local class symbols
      *  to class definition trees.
      *  There is only one case; all other cases simply traverse down the tree.
@@ -2244,7 +2240,11 @@ public class Lower extends TreeTranslator {
                     JCMethodDecl mdef = (JCMethodDecl)def;
                     if (TreeInfo.hasConstructorCall(mdef, names._super)) {
                         List<JCStatement> initializer = List.of(initOuterThis(mdef.body.pos, mdef.params.head.sym, storesThis)) ;
-                        TreeInfo.mapSuperCalls(mdef.body, supercall -> make.Block(0, initializer.append(supercall)));
+                        if (hasEarlyValueClassFields(currentClass)) {
+                            mdef.body.stats = initializer.appendList(mdef.body.stats);
+                        } else {
+                            TreeInfo.flatMapSuperCalls(mdef.body, supercall -> initializer.append(supercall));
+                        }
                     }
                 }
             }
@@ -2747,7 +2747,11 @@ public class Lower extends TreeTranslator {
             // Prepend initializers in front of super() call
             if (added.nonEmpty()) {
                 List<JCStatement> initializers = added.toList();
-                TreeInfo.mapSuperCalls(tree.body, supercall -> make.Block(0, initializers.append(supercall)));
+                if (hasEarlyValueClassFields(currentClass)) {
+                    tree.body.stats = initializers.appendList(tree.body.stats);
+                } else {
+                    TreeInfo.flatMapSuperCalls(tree.body, supercall -> initializers.append(supercall));
+                }
             }
 
             // pop local variables from proxy stack
@@ -2779,13 +2783,17 @@ public class Lower extends TreeTranslator {
             }
             if (initializers.nonEmpty()) {
                 if (allowValueClasses && (tree.sym.owner.isValueClass() || ((ClassSymbol)tree.sym.owner).isRecord())) {
-                    TreeInfo.mapSuperCalls(tree.body, supercall -> make.Block(0, initializers.toList().append(supercall)));
+                    TreeInfo.flatMapSuperCalls(tree.body, supercall -> initializers.toList().append(supercall));
                 } else {
                     tree.body.stats = tree.body.stats.appendList(initializers);
                 }
             }
         }
         result = tree;
+    }
+
+    boolean hasEarlyValueClassFields(ClassSymbol c) {
+        return allowValueClasses && target.hasValueClasses() && c.isValueClass();
     }
 
     public void visitTypeCast(JCTypeCast tree) {
@@ -3007,17 +3015,6 @@ public class Lower extends TreeTranslator {
             } else {
                 // nested class
                 thisArg = makeOwnerThis(tree.pos(), c, false);
-                if (currentMethodSym != null &&
-                        ((currentMethodSym.flags_field & (STATIC | BLOCK)) == BLOCK) &&
-                        currentMethodSym.owner.isValueClass()) {
-                    // instance initializer in a value class
-                    Set<JCExpression> outerThisSet = initializerOuterThis.get(currentClass);
-                    if (outerThisSet == null) {
-                        outerThisSet = new HashSet<>();
-                    }
-                    outerThisSet.add(thisArg);
-                    initializerOuterThis.put(currentClass, outerThisSet);
-                }
             }
             tree.args = tree.args.prepend(thisArg);
         }

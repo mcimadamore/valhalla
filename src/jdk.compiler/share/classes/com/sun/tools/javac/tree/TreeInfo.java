@@ -345,30 +345,41 @@ public class TreeInfo {
 
     /** Finds super() invocations and translates them using the given mapping.
      */
-    public static void mapSuperCalls(JCBlock block, Function<? super JCExpressionStatement, ? extends JCStatement> mapper) {
-        block.stats = block.stats.map(new TreeInfo.SuperCallTranslator(mapper)::translate);
+    public static void flatMapSuperCalls(JCBlock block, Function<? super JCExpressionStatement, List<JCStatement>> mapper) {
+        block.stats = new TreeInfo.SuperCallListTranslator(mapper).translateStats(block.stats);
     }
 
-    /** Finds all super() invocations and translates them somehow.
+    /** Finds all super() invocations and translates them to statement lists.
      */
-    private static class SuperCallTranslator extends TreeTranslator {
+    private static class SuperCallListTranslator extends TreeTranslator {
 
-        final Function<? super JCExpressionStatement, ? extends JCStatement> translator;
+        final Function<? super JCExpressionStatement, List<JCStatement>> translator;
 
         /** Constructor.
          *
-         * @param translator translates super() invocations, returning replacement statement or null for no change
+         * @param translator translates super() invocations, returning replacement statements or null for no change
          */
-        SuperCallTranslator(Function<? super JCExpressionStatement, ? extends JCStatement> translator) {
+        SuperCallListTranslator(Function<? super JCExpressionStatement, List<JCStatement>> translator) {
             this.translator = translator;
         }
 
-        // Because it returns void, anywhere super() can legally appear must be a location where a JCStatement
-        // could also appear, so it's OK that we are replacing a JCExpressionStatement with a JCStatement here.
+        List<JCStatement> translateStats(List<JCStatement> stats) {
+            ListBuffer<JCStatement> newStats = new ListBuffer<>();
+            for (JCStatement stat : stats) {
+                if (TreeInfo.isSuperCall(stat)) {
+                    List<JCStatement> translated = translator.apply((JCExpressionStatement)stat);
+                    newStats.appendList(translated != null ? translated : List.of(translate(stat)));
+                } else {
+                    newStats.append(translate(stat));
+                }
+            }
+            return newStats.toList();
+        }
+
         @Override
-        public void visitExec(JCExpressionStatement stat) {
-            if (!TreeInfo.isSuperCall(stat) || (result = this.translator.apply(stat)) == null)
-                super.visitExec(stat);
+        public void visitBlock(JCBlock tree) {
+            tree.stats = translateStats(tree.stats);
+            result = tree;
         }
 
         @Override

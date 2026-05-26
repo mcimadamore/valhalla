@@ -201,7 +201,7 @@ public class LocalProxyVarsGen extends TreeTranslator {
         if (constructorCall.args.isEmpty()) {
             // this is just a super invocation with no arguments we can set the fields just before the invocation
             // and let Gen do the rest
-            TreeInfo.mapSuperCalls(constructor.body, supercall -> make.Block(0, assigmentsBeforeSuper.toList().append(supercall)));
+            TreeInfo.flatMapSuperCalls(constructor.body, supercall -> assigmentsBeforeSuper.toList().append(supercall));
         } else {
             // we need to generate fresh local variables to catch the values of the arguments, then
             // assign the proxy locals to the fields and finally invoke the super with the fresh local variables
@@ -220,8 +220,8 @@ public class LocalProxyVarsGen extends TreeTranslator {
                 newArgs.add(make.at(argProxy.pos).Ident((JCVariableDecl) argProxy));
             }
             constructorCall.args = newArgs.toList();
-            TreeInfo.mapSuperCalls(constructor.body,
-                    supercall -> make.Block(0, superArgsProxiesList.appendList(assigmentsBeforeSuper.toList()).append(supercall)));
+            TreeInfo.flatMapSuperCalls(constructor.body,
+                    supercall -> superArgsProxiesList.appendList(assigmentsBeforeSuper.toList()).append(supercall));
         }
     }
 

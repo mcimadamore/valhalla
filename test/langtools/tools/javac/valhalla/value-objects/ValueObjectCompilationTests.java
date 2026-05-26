@@ -49,6 +49,7 @@ import java.lang.classfile.instruction.FieldInstruction;
 import java.lang.constant.ConstantDescs;
 import java.lang.reflect.AccessFlag;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -1457,12 +1458,13 @@ class ValueObjectCompilationTests extends CompilationTestCase {
                             for (var entry : stackMapTable.entries()) {
                                 Assert.check(data.expectedFrameTypes()[entryIndex++] == entry.frameType(), "expected " + data.expectedFrameTypes()[entryIndex - 1] + " found " + entry.frameType());
                                 if (entry.frameType() == 246) {
-                                    Assert.check(data.expectedUnsetFields()[expectedUnsetFieldsIndex].length == entry.unsetFields().size());
-                                    int index = 0;
+                                    Set<String> expectedUnsetFields = Set.of(data.expectedUnsetFields()[expectedUnsetFieldsIndex]);
+                                    Set<String> actualUnsetFields = new HashSet<>();
                                     for (var nat : entry.unsetFields()) {
-                                        String unsetStr = nat.name() + ":" + nat.type();
-                                        Assert.check(data.expectedUnsetFields()[expectedUnsetFieldsIndex][index++].equals(unsetStr));
+                                        actualUnsetFields.add(nat.name() + ":" + nat.type());
                                     }
+                                    Assert.check(expectedUnsetFields.equals(actualUnsetFields),
+                                            "expected " + expectedUnsetFields + " found " + actualUnsetFields);
                                     expectedUnsetFieldsIndex++;
                                 }
                             }

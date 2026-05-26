@@ -152,8 +152,6 @@ public class Gen extends JCTree.Visitor {
      */
     private Code code;
 
-    private List<VarSymbol> currentStrictFields = List.nil();
-
     /** Items structure, set by genMethod.
      */
     private Items items;
@@ -576,51 +574,16 @@ public class Gen extends JCTree.Visitor {
             // We are seeing a constructor that has a super() call.
             // Find the super() invocation and append the given initializer code.
             if (allowValueClasses & (md.sym.owner.isValueClass() || ((md.sym.owner.flags_field & RECORD) != 0))) {
-                rewriteInitializersIfNeeded(md, inits);
                 md.body.stats = inits.appendList(md.body.stats);
-                TreeInfo.mapSuperCalls(md.body, supercall -> make.Block(0, initBlocks.prepend(supercall)));
+                TreeInfo.flatMapSuperCalls(md.body, supercall -> initBlocks.prepend(supercall));
             } else {
-                TreeInfo.mapSuperCalls(md.body, supercall -> make.Block(0, inits.prepend(supercall)));
+                TreeInfo.flatMapSuperCalls(md.body, supercall -> inits.prepend(supercall));
             }
 
             if (md.body.bracePos == Position.NOPOS)
                 md.body.bracePos = TreeInfo.endPos(md.body.stats.last());
 
             md.sym.appendUniqueTypeAttributes(initTAs);
-        }
-    }
-
-    void rewriteInitializersIfNeeded(JCMethodDecl md, List<JCStatement> initCode) {
-        if (lower.initializerOuterThis.containsKey(md.sym.owner)) {
-            InitializerVisitor initializerVisitor = new InitializerVisitor(md, lower.initializerOuterThis.get(md.sym.owner));
-            for (JCStatement init : initCode) {
-                initializerVisitor.scan(init);
-            }
-        }
-    }
-
-    public static class InitializerVisitor extends TreeScanner {
-        JCMethodDecl md;
-        Set<JCExpression> exprSet;
-
-        public InitializerVisitor(JCMethodDecl md, Set<JCExpression> exprSet) {
-            this.md = md;
-            this.exprSet = exprSet;
-        }
-
-        @Override
-        public void visitTree(JCTree tree) {}
-
-        @Override
-        public void visitIdent(JCIdent tree) {
-            if (exprSet.contains(tree)) {
-                for (JCVariableDecl param: md.params) {
-                    if (param.name == tree.name &&
-                            ((param.sym.flags_field & (MANDATED | NOOUTERTHIS)) == (MANDATED | NOOUTERTHIS))) {
-                        tree.sym = param.sym;
-                    }
-                }
-            }
         }
     }
 
@@ -1120,7 +1083,7 @@ public class Gen extends JCTree.Visitor {
             }
 
             if (meth.isConstructor()) {
-                markUnsetStrictFields();
+                markUnsetStrictFields(meth.enclClass());
             }
 
             // Get ready to generate code for method body.
@@ -1133,17 +1096,12 @@ public class Gen extends JCTree.Visitor {
             return startpcCrt;
         }
 
-        private void markUnsetStrictFields() {
-            int nextSyntheticAdr = 0;
-            for (VarSymbol field : currentStrictFields) {
-                if (field.adr >= 0) {
-                    nextSyntheticAdr = Math.max(nextSyntheticAdr, field.adr + 1);
-                }
-            }
-            for (VarSymbol field : currentStrictFields) {
-                if (field.adr < 0) {
-                    field.adr = nextSyntheticAdr++;
-                }
+        private void markUnsetStrictFields(ClassSymbol owner) {
+            int nextAdr = 0;
+            for (Symbol sym : owner.members().getSymbols(s -> s.kind == VAR && s.isStrictInstance(),
+                    Scope.LookupKind.NON_RECURSIVE)) {
+                VarSymbol field = (VarSymbol)sym;
+                field.adr = nextAdr++;
                 code.markStrictFieldUnset(field);
             }
         }
@@ -2578,12 +2536,10 @@ public class Gen extends JCTree.Visitor {
      *  @return      True if code is generated with no errors.
      */
     public boolean genClass(Env<AttrContext> env, JCClassDecl cdef) {
-        List<VarSymbol> prevStrictFields = currentStrictFields;
         try {
             attrEnv = env;
             ClassSymbol c = cdef.sym;
             this.toplevel = env.toplevel;
-            currentStrictFields = strictInstanceFields(cdef.defs);
             /* method normalizeDefs() can add references to external classes into the constant pool
              */
             cdef.defs = normalizeDefs(cdef.defs, c);
@@ -2610,26 +2566,12 @@ public class Gen extends JCTree.Visitor {
             return nerrs == 0;
         } finally {
             // note: this method does NOT support recursion.
-            currentStrictFields = prevStrictFields;
             attrEnv = null;
             this.env = null;
             toplevel = null;
             nerrs = 0;
             qualifiedSymbolCache.clear();
         }
-    }
-
-    private List<VarSymbol> strictInstanceFields(List<JCTree> defs) {
-        ListBuffer<VarSymbol> fields = new ListBuffer<>();
-        for (JCTree def : defs) {
-            if (def.hasTag(VARDEF)) {
-                VarSymbol field = ((JCVariableDecl) def).sym;
-                if (field.isStrictInstance()) {
-                    fields.add(field);
-                }
-            }
-        }
-        return fields.toList();
     }
 
 /* ************************************************************************
