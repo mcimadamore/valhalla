@@ -136,6 +136,8 @@ final class ArrayVarHandle extends VarHandle {
             int layout = UNSAFE.arrayLayout(array);
             return UNSAFE.getFlatValueVolatile(array,
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType());
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         return UNSAFE.getReferenceVolatile(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE);
@@ -157,6 +159,8 @@ final class ArrayVarHandle extends VarHandle {
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType(),
                     storeCheck(handle, array, value));
             return;
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         UNSAFE.putReferenceVolatile(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE,
@@ -177,6 +181,8 @@ final class ArrayVarHandle extends VarHandle {
             int layout = UNSAFE.arrayLayout(array);
             return UNSAFE.getFlatValueOpaque(array,
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType());
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         return UNSAFE.getReferenceOpaque(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE);
@@ -198,6 +204,8 @@ final class ArrayVarHandle extends VarHandle {
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType(),
                     storeCheck(handle, array, value));
             return;
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         UNSAFE.putReferenceOpaque(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE,
@@ -218,6 +226,8 @@ final class ArrayVarHandle extends VarHandle {
             int layout = UNSAFE.arrayLayout(array);
             return UNSAFE.getFlatValueAcquire(array,
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType());
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         return UNSAFE.getReferenceAcquire(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE);
@@ -239,6 +249,8 @@ final class ArrayVarHandle extends VarHandle {
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType(),
                     storeCheck(handle, array, value));
             return;
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         UNSAFE.putReferenceRelease(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE,
@@ -261,6 +273,8 @@ final class ArrayVarHandle extends VarHandle {
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType(),
                     arrayType.componentType().cast(expected),
                     storeCheck(handle, array, value));
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         return UNSAFE.compareAndSetReference(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE, handle.componentType,
@@ -284,6 +298,8 @@ final class ArrayVarHandle extends VarHandle {
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType(),
                     arrayType.componentType().cast(expected),
                     storeCheck(handle, array, value));
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         return UNSAFE.compareAndExchangeReference(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE, handle.componentType,
@@ -307,6 +323,8 @@ final class ArrayVarHandle extends VarHandle {
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType(),
                     arrayType.componentType().cast(expected),
                     storeCheck(handle, array, value));
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         return UNSAFE.compareAndExchangeReferenceAcquire(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE, handle.componentType,
@@ -330,6 +348,8 @@ final class ArrayVarHandle extends VarHandle {
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType(),
                     arrayType.componentType().cast(expected),
                     storeCheck(handle, array, value));
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         return UNSAFE.compareAndExchangeReferenceRelease(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE, handle.componentType,
@@ -353,6 +373,8 @@ final class ArrayVarHandle extends VarHandle {
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType(),
                     arrayType.componentType().cast(expected),
                     storeCheck(handle, array, value));
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         return UNSAFE.weakCompareAndSetReferencePlain(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE, handle.componentType,
@@ -376,6 +398,8 @@ final class ArrayVarHandle extends VarHandle {
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType(),
                     arrayType.componentType().cast(expected),
                     storeCheck(handle, array, value));
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         return UNSAFE.weakCompareAndSetReference(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE, handle.componentType,
@@ -399,6 +423,8 @@ final class ArrayVarHandle extends VarHandle {
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType(),
                     arrayType.componentType().cast(expected),
                     storeCheck(handle, array, value));
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         return UNSAFE.weakCompareAndSetReferenceAcquire(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE, handle.componentType,
@@ -422,6 +448,8 @@ final class ArrayVarHandle extends VarHandle {
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType(),
                     arrayType.componentType().cast(expected),
                     storeCheck(handle, array, value));
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         return UNSAFE.weakCompareAndSetReferenceRelease(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE, handle.componentType,
@@ -444,6 +472,8 @@ final class ArrayVarHandle extends VarHandle {
             return UNSAFE.getAndSetFlatValue(array,
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType(),
                     storeCheck(handle, array, value));
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         return UNSAFE.getAndSetReference(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE,
@@ -465,6 +495,8 @@ final class ArrayVarHandle extends VarHandle {
             return UNSAFE.getAndSetFlatValueAcquire(array,
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType(),
                     storeCheck(handle, array, value));
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         return UNSAFE.getAndSetReferenceAcquire(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE,
@@ -486,6 +518,8 @@ final class ArrayVarHandle extends VarHandle {
             return UNSAFE.getAndSetFlatValueRelease(array,
                     (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << ashift) + aoffset, layout, arrayType.componentType(),
                     storeCheck(handle, array, value));
+        } else if (ValueClass.isConcreteValueClass(arrayType.componentType())) {
+            VarHandles.checkAtomicFlatArray(array);
         }
         return UNSAFE.getAndSetReferenceRelease(array,
                 (((long) Preconditions.checkIndex(index, array.length, Preconditions.AIOOBE_FORMATTER)) << REFERENCE_SHIFT) + REFERENCE_BASE,
