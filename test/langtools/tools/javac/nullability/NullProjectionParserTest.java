@@ -30,10 +30,11 @@
  *          jdk.compiler/com.sun.tools.javac.util
  * @build combo.ComboTestHelper
 
- * @run main NullRestrictionParserTest
+ * @run main NullProjectionParserTest
  */
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 import combo.ComboInstance;
@@ -44,7 +45,7 @@ import combo.ComboTestHelper;
 import javax.lang.model.SourceVersion;
 import javax.tools.Diagnostic.Kind;
 
-public class NullRestrictionParserTest extends ComboInstance<NullRestrictionParserTest> {
+public class NullProjectionParserTest extends ComboInstance<NullProjectionParserTest> {
 
     enum AnnoKind implements ComboParameter {
         ANNO("@A "),
@@ -62,22 +63,36 @@ public class NullRestrictionParserTest extends ComboInstance<NullRestrictionPars
         }
     }
 
+    enum MarkerKind implements ComboParameter {
+        NONE(""),
+        NULL_RESTRICTED("!"),
+        NULLABLE("?");
+
+        final String marker;
+
+        MarkerKind(String marker) {
+            this.marker = marker;
+        }
+
+        @Override
+        public String expand(String optParameter) {
+            return marker;
+        }
+    }
+
     enum TypeKind implements ComboParameter {
-        STRING("#{ANNO}String", 0),
-        NN_STRING("#{ANNO}String!", 0),
-        STRING_ARR("#{ANNO}String[]", 0),
-        STRING_NN_ARR("#{ANNO}String[]!", 0),
-        NN_STRING_ARR("#{ANNO}String![]", 1),
-        NN_STRING_NN_ARR("#{ANNO}String![]!", 1),
-        STRING_ARR_ARR("#{ANNO}String[][]", 0),
-        STRING_NN_ARR_ARR("#{ANNO}String[]![]", 1),
-        STRING_NN_ARR_NN_ARR("#{ANNO}String[]![]!", 1),
-        NN_STRING_ARR_ARR("#{ANNO}String![]!", 1),
-        NN_STRING_NN_ARR_ARR("#{ANNO}String![]![]", 2),
-        NN_STRING_NN_ARR_NN_ARR("#{ANNO}String![]![]!", 2),
-        NN_LIST_STRING("#{ANNO}List<String>!", 0),
-        NN_LIST_STRING_BAD_POS("#{ANNO}List!<#{ANNO}String>", 1),
-        LIST_NN_STRING("#{ANNO}List<#{ANNO}String!>", 1);
+        NN_STRING("#{ANNO}String#{MARKER}", 0),
+        STRING_NN_ARR("#{ANNO}String[]#{MARKER}", 0),
+        NN_STRING_ARR("#{ANNO}String#{MARKER}[]", 1),
+        NN_STRING_NN_ARR("#{ANNO}String#{MARKER}[]#{MARKER}", 1),
+        STRING_NN_ARR_ARR("#{ANNO}String[]#{MARKER}[]", 1),
+        STRING_NN_ARR_NN_ARR("#{ANNO}String[]#{MARKER}[]#{MARKER}", 1),
+        NN_STRING_ARR_ARR("#{ANNO}String#{MARKER}[]#{MARKER}", 1),
+        NN_STRING_NN_ARR_ARR("#{ANNO}String#{MARKER}[]#{MARKER}[]", 2),
+        NN_STRING_NN_ARR_NN_ARR("#{ANNO}String#{MARKER}[]#{MARKER}[]#{MARKER}", 2),
+        NN_LIST_STRING("#{ANNO}List<String>#{MARKER}", 0),
+        NN_LIST_STRING_BAD_POS("#{ANNO}List#{MARKER}<#{ANNO}String>", 1),
+        LIST_NN_STRING("#{ANNO}List<#{ANNO}String#{MARKER}>", 1);
         //NN_LIST_STRING_ARR("#{ANNO}List<#{ANNO}String>[]!", 0); // this doesn't work because of an issue (see JDK-8374629)
 
 
@@ -96,12 +111,14 @@ public class NullRestrictionParserTest extends ComboInstance<NullRestrictionPars
     }
 
     public static void main(String... args) throws Exception {
-        new ComboTestHelper<NullRestrictionParserTest>()
+        new ComboTestHelper<NullProjectionParserTest>()
+                .withDimension("MARKER", (x, mk) -> x.mk = mk, MarkerKind.values())
                 .withDimension("ANNO", (x, ak) -> x.ak = ak, AnnoKind.values())
                 .withDimension("TYPE", (x, tk) -> x.tk = tk, TypeKind.values())
-                .run(NullRestrictionParserTest::new);
+                .run(NullProjectionParserTest::new);
     }
 
+    MarkerKind mk;
     AnnoKind ak;
     TypeKind tk;
 
@@ -185,13 +202,16 @@ public class NullRestrictionParserTest extends ComboInstance<NullRestrictionPars
     }
 
     void check(Result<?> res) {
-        int expectedErrors = tk.errors * num_types;
+        int expectedErrors = mk == MarkerKind.NONE ?
+                0 : tk.errors * num_types;
 
-        var errors = res.diagnosticsForKey("compiler.err.unsupported.null.restriction");
+        var errors = new ArrayList<>();
+        errors.addAll(res.diagnosticsForKey("compiler.err.unsupported.null.restriction"));
+        errors.addAll(res.diagnosticsForKey("compiler.err.unsupported.nullable.type"));
 
-        var otherErrors = res.diagnosticsForKind(Kind.ERROR).size() - errors.length();
+        var otherErrors = res.diagnosticsForKind(Kind.ERROR).size() - errors.size();
 
-        if (expectedErrors != errors.length() || otherErrors > 0) {
+        if (expectedErrors != errors.size() || otherErrors > 0) {
             fail("invalid diagnostics for source:\n" +
                     res.compilationInfo() +
                     "\nFound error: " + errors +

@@ -37,11 +37,9 @@ import com.sun.source.tree.MemberReferenceTree.ReferenceMode;
 import com.sun.source.tree.ModuleTree.ModuleKind;
 
 import com.sun.tools.javac.code.*;
-import com.sun.tools.javac.code.FlagsEnum;
 import com.sun.tools.javac.code.Source.Feature;
 import com.sun.tools.javac.file.PathFileObject;
 import com.sun.tools.javac.parser.Tokens.*;
-import com.sun.tools.javac.parser.Tokens.Comment.CommentStyle;
 import com.sun.tools.javac.resources.CompilerProperties.Errors;
 import com.sun.tools.javac.resources.CompilerProperties.Fragments;
 import com.sun.tools.javac.resources.CompilerProperties.LintWarnings;
@@ -55,7 +53,6 @@ import com.sun.tools.javac.util.JCDiagnostic.Error;
 import com.sun.tools.javac.util.JCDiagnostic.Fragment;
 import com.sun.tools.javac.util.List;
 
-import static com.sun.tools.javac.code.Flags.asFlagSet;
 import static com.sun.tools.javac.parser.Tokens.TokenKind.*;
 import static com.sun.tools.javac.parser.Tokens.TokenKind.ASSERT;
 import static com.sun.tools.javac.parser.Tokens.TokenKind.CASE;
@@ -64,7 +61,7 @@ import static com.sun.tools.javac.parser.Tokens.TokenKind.EQ;
 import static com.sun.tools.javac.parser.Tokens.TokenKind.GT;
 import static com.sun.tools.javac.parser.Tokens.TokenKind.IMPORT;
 import static com.sun.tools.javac.parser.Tokens.TokenKind.LT;
-import static com.sun.tools.javac.parser.Tokens.TokenKind.SYNCHRONIZED;
+
 import com.sun.tools.javac.parser.VirtualParser.VirtualScanner;
 import static com.sun.tools.javac.tree.JCTree.Tag.*;
 import static com.sun.tools.javac.resources.CompilerProperties.Fragments.ImplicitAndExplicitNotAllowed;
@@ -283,7 +280,8 @@ public class JavacParser implements Parser {
     protected static final int EXPR          = 1 << 0;
     protected static final int TYPE          = 1 << 1;
     protected static final int NOLAMBDA      = 1 << 2;
-    protected static final int ALLOW_BANGS   = 1 << 3;
+    protected static final int ALLOW_BANGS_QUES = 1 << 3;
+    protected static final int DEFER_QUES = 1 << 4;
 
     protected void setMode(int mode) {
         this.mode = mode;
@@ -306,11 +304,11 @@ public class JavacParser implements Parser {
     }
 
     protected void selectTypeMode() {
-        setMode((mode & ALLOW_BANGS) | (mode & NOLAMBDA) | TYPE);
+        setMode((mode & ALLOW_BANGS_QUES) | (mode & NOLAMBDA) | (mode & DEFER_QUES) | TYPE);
     }
 
-    protected void selectTypeModeWithBangs() {
-        setMode(ALLOW_BANGS | (mode & NOLAMBDA) | TYPE);
+    protected void selectTypeModeWithNullProjections() {
+        setMode(ALLOW_BANGS_QUES | (mode & NOLAMBDA) | (mode & DEFER_QUES) |  TYPE);
     }
 
     /** The current mode.
@@ -836,12 +834,7 @@ public class JavacParser implements Parser {
      */
     public JCExpression qualident(boolean allowAnnos) {
         JCExpression t = toP(F.at(token.pos).Ident(ident()));
-        if (allowNullRestrictedTypes && EMOTIONAL_QUALIFIER.test(token.kind)) {
-            if (checkNullRestrictionLocation(BAD_BANG_LOCATION_QUALIDENT)) {
-                setNullMarker(t);
-            }
-            nextToken();
-        }
+        nullProjectionOpt(t, BAD_BANG_LOCATION_QUALIDENT);
         while (token.kind == DOT) {
             int pos = token.pos;
             nextToken();
@@ -853,12 +846,7 @@ public class JavacParser implements Parser {
             if (tyannos != null && tyannos.nonEmpty()) {
                 t = toP(F.at(tyannos.head.pos).AnnotatedType(tyannos, t));
             }
-            if (allowNullRestrictedTypes && EMOTIONAL_QUALIFIER.test(token.kind)) {
-                if (checkNullRestrictionLocation(BAD_BANG_LOCATION_QUALIDENT)) {
-                    setNullMarker(t);
-                }
-                nextToken();
-            }
+            nullProjectionOpt(t, BAD_BANG_LOCATION_QUALIDENT);
         }
         return t;
     }
@@ -1024,7 +1012,7 @@ public class JavacParser implements Parser {
         else {
             if (parsedType == null) {
                 boolean var = token.kind == IDENTIFIER && token.name() == names.var;
-                e = unannotatedType(allowVar, TYPE | NOLAMBDA | ALLOW_BANGS);
+                e = unannotatedType(allowVar, TYPE | NOLAMBDA | ALLOW_BANGS_QUES);
                 if (var) {
                     e = replaceTypeWithVar(e);
                 }
@@ -1123,7 +1111,7 @@ public class JavacParser implements Parser {
         List<JCExpression> targets = List.of(t);
         while (token.kind == AMP) {
             accept(AMP);
-            targets = targets.prepend(parseType(TYPE | ALLOW_BANGS));
+            targets = targets.prepend(parseType(TYPE | ALLOW_BANGS_QUES));
         }
         if (targets.length() > 1) {
             t = toP(F.at(pos1).TypeIntersection(targets.reverse()));
@@ -1291,7 +1279,21 @@ public class JavacParser implements Parser {
                     int patternPos = token.pos;
                     JCModifiers mods = optFinal(0);
                     int typePos = token.pos;
-                    JCExpression type = unannotatedType(false, TYPE | ALLOW_BANGS);
+                    JCExpression type = unannotatedType(false, TYPE | ALLOW_BANGS_QUES | DEFER_QUES);
+                    if (allowNullRestrictedTypes && token.kind == QUES) {
+                        // still unsure, check what follows to disambiguate
+                        int typeEndPos = 0;
+                        if (peekToken(IDENTIFIER) || peekToken(UNDERSCORE)) {
+                            typeEndPos = 1;
+                        }
+                        if (peekToken(typeEndPos, COMMA) || peekToken(typeEndPos, SEMI) ||
+                                peekToken(COLON) ||
+                                peekToken(typeEndPos, RPAREN) || peekToken(typeEndPos, QUES) ||
+                                peekToken(typeEndPos, INSTANCEOF_INFIX)) {
+                            setNullMarker(type);
+                            accept(QUES);
+                        }
+                    }
                     if (token.kind == IDENTIFIER) {
                         checkSourceLevel(token.pos, Feature.PATTERN_MATCHING_IN_INSTANCEOF);
                         pattern = parsePattern(patternPos, mods, type, false, false);
@@ -1497,7 +1499,7 @@ public class JavacParser implements Parser {
                     case CAST:
                        accept(LPAREN);
                        selectTypeMode();
-                       t = parseIntersectionType(pos, parseType(TYPE | ALLOW_BANGS));
+                       t = parseIntersectionType(pos, parseType(TYPE | ALLOW_BANGS_QUES));
                        accept(RPAREN);
                        selectExprMode();
                        JCExpression t1 = term3();
@@ -1610,13 +1612,7 @@ public class JavacParser implements Parser {
                 t = lambdaExpressionOrStatement(false, false, pos);
             } else {
                 t = toP(F.at(token.pos).Ident(ident()));
-                if (allowNullRestrictedTypes && EMOTIONAL_QUALIFIER.test(token.kind)) {
-                    if (checkNullRestrictionLocation()) {
-                        selectTypeMode();
-                        setNullMarker(t);
-                    }
-                    nextToken();
-                }
+                nullProjectionOpt(t);
                 loop: while (true) {
                     pos = token.pos;
                     final List<JCAnnotation> annos = typeAnnotationsOpt();
@@ -1629,24 +1625,20 @@ public class JavacParser implements Parser {
                     switch (token.kind) {
                     case LBRACKET:
                         nextToken();
-                        boolean pendingNullRestriction = false;
+                        NullMarker pendingNullProjection = null;
                         if (token.kind == RBRACKET) {
                             nextToken();
-                            if (allowNullRestrictedTypes && EMOTIONAL_QUALIFIER.test(token.kind)) {
-                                checkNullRestrictionLocation();
-                                pendingNullRestriction = true;
-                                nextToken();
-                            }
+                            nullProjectionOpt(t);
                             JCExpression elem = bracketsOpt(t);
                             t = toP(F.at(pos).TypeArray(elem));
                             if (elem instanceof JCNullableTypeExpression nullableTypeExpression &&
                                     nullableTypeExpression.getNullMarker() != NullMarker.UNSPECIFIED) {
                                 // fixup, as null-restriction was attached to the "wrong" array
+                                pendingNullProjection = nullableTypeExpression.getNullMarker();
                                 nullableTypeExpression.setNullMarker(NullMarker.UNSPECIFIED);
-                                pendingNullRestriction = true;
                             }
-                            if (pendingNullRestriction) {
-                                ((JCNullableTypeExpression)t).setNullMarker(NullMarker.NOT_NULL);
+                            if (pendingNullProjection != null) {
+                                ((JCNullableTypeExpression)t).setNullMarker(pendingNullProjection);
                             }
                             if (annos.nonEmpty()) {
                                 t = toP(F.at(pos).AnnotatedType(annos, t));
@@ -1749,14 +1741,14 @@ public class JavacParser implements Parser {
                                 args.append(typeArgument());
                             }
                             accept(GT);
-                            skipUnsupportedNullRestriction();
+                            skipUnsupportedNullProjection();
                             t = toP(F.at(pos1).TypeApply(t, args.toList()));
                             while (token.kind == DOT) {
                                 nextToken();
                                 selectTypeMode();
                                 t = toP(F.at(token.pos).Select(t, ident()));
                                 t = typeApplyOpt(t);
-                                skipUnsupportedNullRestriction();
+                                skipUnsupportedNullProjection();
                             }
                             t = bracketsOpt(t);
                             if (token.kind != COLCOL) {
@@ -1778,7 +1770,9 @@ public class JavacParser implements Parser {
         case BYTE: case SHORT: case CHAR: case INT: case LONG: case FLOAT:
         case DOUBLE: case BOOLEAN:
             if (typeArgs != null) illegal();
-            t = bracketsSuffix(bracketsOpt(basicType()));
+            t = basicType();
+            nullProjectionOpt(t);
+            t = bracketsSuffix(bracketsOpt(t));
             break;
         case VOID:
             if (typeArgs != null) illegal();
@@ -1892,13 +1886,8 @@ public class JavacParser implements Parser {
             int pos1 = token.pos;
             final List<JCAnnotation> annos = typeAnnotationsOpt();
 
-            if (allowNullRestrictedTypes && isMode(TYPE) && typeArgs == null && EMOTIONAL_QUALIFIER.test(token.kind) &&
-                    (t instanceof JCIdent || t instanceof JCFieldAccess || t instanceof JCArrayTypeTree || t instanceof JCTypeApply)) {
-                if (checkNullRestrictionLocation()) {
-                    setNullMarker(t);
-                    selectTypeMode();
-                }
-                nextToken();
+            if (nullProjectionOpt(t)) {
+                continue;
             } else if (token.kind == LBRACKET) {
                 nextToken();
                 if (isMode(TYPE)) {
@@ -1908,11 +1897,7 @@ public class JavacParser implements Parser {
                         nextToken();
                         t = bracketsOpt(t);
                         t = toP(F.at(pos1).TypeArray(t));
-                        if (allowNullRestrictedTypes && isMode(TYPE) && EMOTIONAL_QUALIFIER.test(token.kind)) {
-                            checkNullRestrictionLocation();
-                            setNullMarker(t);
-                            nextToken();
-                        }
+                        nullProjectionOpt(t);
                         if (token.kind == COLCOL) {
                             selectExprMode();
                             continue;
@@ -1996,8 +1981,20 @@ public class JavacParser implements Parser {
     }
 
     void setNullMarker(JCExpression exp, Token tk) {
+        setNullMarker(exp, nullMarker(tk));
+    }
+
+    void setNullMarker(JCExpression exp, NullMarker tk) {
         checkSourceLevel(Feature.NULL_RESTRICTED_TYPES);
-        ((JCNullableTypeExpression)exp).setNullMarker(NullMarker.NOT_NULL);
+        if (exp instanceof JCNullableTypeExpression nte) {
+            nte.setNullMarker(tk);
+        }
+    }
+
+    NullMarker nullMarker(Token tk) {
+        return tk.kind == QUES ?
+                NullMarker.NULLABLE :
+                NullMarker.NOT_NULL;
     }
 
     /**
@@ -2144,7 +2141,7 @@ public class JavacParser implements Parser {
                     } else if (allowNullRestrictedTypes && (peekToken(lookahead, EMOTIONAL_QUALIFIER, GENERIC_TYPE_END) ||
                             peekToken(lookahead, EMOTIONAL_QUALIFIER, LT) ||
                             peekToken(lookahead, EMOTIONAL_QUALIFIER, COMMA) ||
-                            peekToken(lookahead, EMOTIONAL_QUALIFIER, LBRACKET)) ) {
+                            peekToken(lookahead, EMOTIONAL_QUALIFIER, LBRACKET))) {
                         // Identifier, '!'/'?', '<'/','/'>' or
                         // Identifier, '!'/'?', '[' -> it's a type, skip the emotional anno and continue
                         lookahead++;
@@ -2263,10 +2260,13 @@ public class JavacParser implements Parser {
 
     /** Accepts all identifier-like tokens */
     protected Predicate<TokenKind> LAX_IDENTIFIER = t -> t == IDENTIFIER || t == UNDERSCORE || t == ASSERT || t == ENUM;
-    protected Predicate<TokenKind> EMOTIONAL_QUALIFIER = t -> t == BANG;
+    protected Predicate<TokenKind> EMOTIONAL_QUALIFIER = t -> t == BANG || t == QUES;
+    protected Predicate<TokenKind> TYPE_SUFFIX = t -> t == DOT || t == LBRACKET || t == LT;
     protected Predicate<TokenKind> GENERIC_TYPE_END = t -> t == GT || t == GTGT || t == GTGTGT;
     protected Predicate<TokenKind> BAD_BANG_LOCATION = t -> t == LT || t == LBRACKET || t == MONKEYS_AT || t == DOT || t == LPAREN;
     protected Predicate<TokenKind> BAD_BANG_LOCATION_QUALIDENT = t -> t == LT || t == MONKEYS_AT || t == DOT || t == LPAREN;
+    protected Predicate<TokenKind> INSTANCEOF_INFIX = t -> t == AMPAMP || t == BARBAR ||
+                                                                     t == EQEQ || t == BANGEQ;
 
     enum ParensResult {
         CAST,
@@ -2550,7 +2550,11 @@ public class JavacParser implements Parser {
      */
     JCExpression typeArgument() {
         List<JCAnnotation> annotations = typeAnnotationsOpt();
-        if (token.kind != QUES) return parseType(false, annotations);
+        if (token.kind != QUES) {
+            var type = parseType(false, annotations);
+            skipUnsupportedNullProjection();
+            return type;
+        }
         int pos = token.pos;
         nextToken();
         JCExpression result;
@@ -2558,11 +2562,13 @@ public class JavacParser implements Parser {
             TypeBoundKind t = to(F.at(pos).TypeBoundKind(BoundKind.EXTENDS));
             nextToken();
             JCExpression bound = parseType();
+            skipUnsupportedNullProjection();
             result = F.at(pos).Wildcard(t, bound);
         } else if (token.kind == SUPER) {
             TypeBoundKind t = to(F.at(pos).TypeBoundKind(BoundKind.SUPER));
             nextToken();
             JCExpression bound = parseType();
+            skipUnsupportedNullProjection();
             result = F.at(pos).Wildcard(t, bound);
         } else if (LAX_IDENTIFIER.test(token.kind)) {
             //error recovery
@@ -2583,7 +2589,7 @@ public class JavacParser implements Parser {
     }
 
     JCTypeApply typeApply(JCExpression t) {
-        skipUnsupportedNullRestriction(); // null-restriction not supported immediately before '<'
+        skipUnsupportedNullProjection(); // null-restriction not supported immediately before '<'
         int pos = token.pos;
         List<JCExpression> args = typeArguments();
         return toP(F.at(pos).TypeApply(t, args));
@@ -2631,47 +2637,69 @@ public class JavacParser implements Parser {
     }
 
     /*
-     * Null restriction support. If we see a null restriction token (e.g. '!'),
-     * we check that the token is not followed by unsupported tokens, like '[', '(' and '.'.
-     * Then, we also make sure that null restriction is enabled in this context
-     * e.g. by making sure the ALLOW_BANG mode is set.
+     * Null projection support. If we see a nullable projection ('?'),
+     * we determine whether to consume it or not based on what follows. For instance,
+     * in some cases we might determine that the following tokens unambiguously
+     * denote a type, in which case we can go ahead and consume the '?'. We have
+     * to be careful, as we don't want to consume a `?` in a context where a conditional
+     * expression is possible.
      */
-    boolean checkNullRestrictionLocation() {
+    boolean nullProjectionOpt(JCExpression t) {
+        return nullProjectionOpt(t, BAD_BANG_LOCATION);
+    }
+
+    boolean nullProjectionOpt(JCExpression t, Predicate<TokenKind> badLocationFilter) {
+        if (allowNullRestrictedTypes &&
+                EMOTIONAL_QUALIFIER.test(token.kind)) {
+            if (token.kind == QUES &&
+                    !isTypeSuffix() &&
+                    (isMode(DEFER_QUES) ||
+                            isMode(EXPR) && !isMode(TYPE))) {
+                return false;
+            } else if (peekToken(badLocationFilter)) {
+                unsupportedNullProjection();
+                nextToken();
+                return true;
+            } else if (isNullProjectionAllowed()) {
+                selectTypeMode();
+                setNullMarker(t);
+                nextToken();
+                return true;
+            } else {
+                skipUnsupportedNullProjection();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    boolean isTypeSuffix() {
+        int postAnno = 0;
+        while (peekToken(postAnno, MONKEYS_AT)) {
+            postAnno = skipAnnotation(postAnno + 1);
+        }
+        return peekToken(postAnno, TYPE_SUFFIX);
+    }
+
+    boolean isNullProjectionAllowed() {
+        return isMode(ALLOW_BANGS_QUES);
+    }
+
+    void unsupportedNullProjection() {
         Assert.check(EMOTIONAL_QUALIFIER.test(token.kind));
-        if (peekToken(BAD_BANG_LOCATION)) {
-            unsupportedNullRestriction();
-            return false;
-        } else {
-            return checkNullRestrictonAllowed();
+        unsupportedNullProjection(nullMarker(token));
+    }
+
+    void unsupportedNullProjection(NullMarker marker) {
+        switch (marker) {
+            case NOT_NULL -> reportSyntaxError(token.pos, Errors.UnsupportedNullRestriction);
+            case NULLABLE -> reportSyntaxError(token.pos, Errors.UnsupportedNullableType);
         }
     }
 
-    boolean checkNullRestrictionLocation(Predicate<TokenKind> badLocationFilter) {
-        Assert.check(EMOTIONAL_QUALIFIER.test(token.kind));
-        if (peekToken(badLocationFilter)) {
-            unsupportedNullRestriction();
-            return false;
-        } else {
-            return checkNullRestrictonAllowed();
-        }
-    }
-
-    boolean checkNullRestrictonAllowed() {
-        Assert.check(EMOTIONAL_QUALIFIER.test(token.kind));
-        if ((mode & ALLOW_BANGS) == 0) {
-            unsupportedNullRestriction();
-            return false;
-        }
-        return true;
-    }
-
-    void unsupportedNullRestriction() {
-        reportSyntaxError(token.pos, Errors.UnsupportedNullRestriction);
-    }
-
-    void skipUnsupportedNullRestriction() {
-        if (allowNullRestrictedTypes && EMOTIONAL_QUALIFIER.test(token.kind)) {
-            unsupportedNullRestriction();
+    void skipUnsupportedNullProjection() {
+        if (EMOTIONAL_QUALIFIER.test(token.kind)) {
+            unsupportedNullProjection();
             nextToken();
         }
     }
@@ -2682,20 +2710,19 @@ public class JavacParser implements Parser {
         return bracketsOpt(t, List.nil());
     }
 
-    private JCExpression bracketsOptCont(JCExpression t, int pos,
+    private JCExpression bracketsOptCont(JCExpression elemtype, int pos,
             List<JCAnnotation> annotations) {
         accept(RBRACKET);
-        Token nullMarker = null;
-        if (allowNullRestrictedTypes && EMOTIONAL_QUALIFIER.test(token.kind)) {
-            checkNullRestrictionLocation();
-            nullMarker = token;
-            nextToken();
+        JCExpression t = F.at(pos).TypeArray(elemtype);
+        int prevMode = mode;
+        try {
+            selectTypeMode();
+            nullProjectionOpt(t);
+        } finally {
+            mode = prevMode;
         }
-        t = bracketsOpt(t);
-        t = toP(F.at(pos).TypeArray(t));
-        if (nullMarker != null) {
-            setNullMarker(t, nullMarker);
-        }
+        ((JCArrayTypeTree)t).elemtype = bracketsOpt(elemtype);
+        t = toP(t);
         if (annotations.nonEmpty()) {
             t = toP(F.at(pos).AnnotatedType(annotations, t));
         }
@@ -2787,20 +2814,15 @@ public class JavacParser implements Parser {
             break;
         default:
         }
-        JCExpression t = qualident(true, TYPE | ALLOW_BANGS);
+        JCExpression t = qualident(true, TYPE | ALLOW_BANGS_QUES);
 
         int prevmode = mode;
-        selectTypeModeWithBangs();
+        selectTypeModeWithNullProjections();
         int lastTypeargsPos = -1;
         if (token.kind == LT) {
             lastTypeargsPos = token.pos;
             t = typeApplyOrDiamond(t);
-            if (allowNullRestrictedTypes && EMOTIONAL_QUALIFIER.test(token.kind)) {
-                if (checkNullRestrictionLocation(BAD_BANG_LOCATION_QUALIDENT)) {
-                    setNullMarker(t);
-                }
-                nextToken();
-            }
+            nullProjectionOpt(t, BAD_BANG_LOCATION_QUALIDENT);
         }
         while (token.kind == DOT) {
             if (TreeInfo.isDiamond(t)) {
@@ -2816,22 +2838,12 @@ public class JavacParser implements Parser {
                 t = toP(F.at(tyannos.head.pos).AnnotatedType(tyannos, t));
             }
 
-            if (allowNullRestrictedTypes && EMOTIONAL_QUALIFIER.test(token.kind)) {
-                if (checkNullRestrictionLocation(BAD_BANG_LOCATION_QUALIDENT)) {
-                    setNullMarker(t);
-                }
-                nextToken();
-            }
+            nullProjectionOpt(t, BAD_BANG_LOCATION_QUALIDENT);
 
             if (token.kind == LT) {
                 lastTypeargsPos = token.pos;
                 t = typeApplyOrDiamond(t);
-                if (allowNullRestrictedTypes && EMOTIONAL_QUALIFIER.test(token.kind)) {
-                    if (checkNullRestrictionLocation(BAD_BANG_LOCATION_QUALIDENT)) {
-                        setNullMarker(t);
-                    }
-                    nextToken();
-                }
+                nullProjectionOpt(t, BAD_BANG_LOCATION_QUALIDENT);
             }
         }
         setMode(prevmode);
@@ -2891,7 +2903,7 @@ public class JavacParser implements Parser {
             setMode(prevmode);
         }
 
-        skipUnsupportedNullRestriction();
+        skipUnsupportedNullProjection();
 
         return classCreatorRest(newpos, encl, typeArgs, t);
     }
@@ -2905,7 +2917,7 @@ public class JavacParser implements Parser {
         accept(LBRACKET);
         if (token.kind == RBRACKET) {
             accept(RBRACKET);
-            skipUnsupportedNullRestriction();
+            skipUnsupportedNullProjection();
             elemtype = bracketsOpt(elemtype, annos);
             if (token.kind == LBRACE) {
                 JCNewArray na = (JCNewArray)arrayInitializer(newpos, elemtype);
@@ -2935,7 +2947,7 @@ public class JavacParser implements Parser {
 
             dims.append(parseExpression());
             accept(RBRACKET);
-            skipUnsupportedNullRestriction();
+            skipUnsupportedNullProjection();
             while (token.kind == LBRACKET
                     || token.kind == MONKEYS_AT) {
                 List<JCAnnotation> maybeDimAnnos = typeAnnotationsOpt();
@@ -2947,7 +2959,7 @@ public class JavacParser implements Parser {
                     dimAnnotations.append(maybeDimAnnos);
                     dims.append(parseExpression());
                     accept(RBRACKET);
-                    skipUnsupportedNullRestriction();
+                    skipUnsupportedNullProjection();
                 }
             }
 
@@ -3133,7 +3145,7 @@ public class JavacParser implements Parser {
             if (isDeclaration()) {
                 return List.of(classOrRecordOrInterfaceOrEnumDeclaration(mods, dc));
             } else {
-                JCExpression t = parseType(true, TYPE | ALLOW_BANGS);
+                JCExpression t = parseType(true, TYPE | ALLOW_BANGS_QUES);
                 return localVariableDeclarations(mods, t, dc);
             }
         }
@@ -3230,7 +3242,7 @@ public class JavacParser implements Parser {
             return List.of(recordDeclaration(F.at(pos).Modifiers(0), dc));
         } else {
             Token prevToken = token;
-            JCExpression t = term(EXPR | TYPE | ALLOW_BANGS);
+            JCExpression t = term(EXPR | TYPE | ALLOW_BANGS_QUES);
             if (token.kind == COLON && t.hasTag(IDENT)) {
                 nextToken();
                 JCStatement stat = parseStatementAsBlock();
@@ -3468,12 +3480,12 @@ public class JavacParser implements Parser {
 
     List<JCExpression> catchTypes() {
         ListBuffer<JCExpression> catchTypes = new ListBuffer<>();
-        catchTypes.add(parseType(TYPE | ALLOW_BANGS));
+        catchTypes.add(parseType(TYPE | ALLOW_BANGS_QUES));
         while (token.kind == BAR) {
             nextToken();
             // Instead of qualident this is now parseType.
             // But would that allow too much, e.g. arrays or generics?
-            catchTypes.add(parseType(TYPE | ALLOW_BANGS));
+            catchTypes.add(parseType(TYPE | ALLOW_BANGS_QUES));
         }
         return catchTypes.toList();
     }
@@ -3639,14 +3651,14 @@ public class JavacParser implements Parser {
                             ((peekToken(lookahead, EMOTIONAL_QUALIFIER, LAX_IDENTIFIER, COMMA) ||
                             peekToken(lookahead, EMOTIONAL_QUALIFIER, LAX_IDENTIFIER, ARROW) ||
                             peekToken(lookahead, EMOTIONAL_QUALIFIER, LAX_IDENTIFIER, COLON) ||
-                            peekToken(lookahead, EMOTIONAL_QUALIFIER, LAX_IDENTIFIER, RPAREN))) ) {
+                            peekToken(lookahead, EMOTIONAL_QUALIFIER, LAX_IDENTIFIER, RPAREN)))) {
                         // this is a type test pattern
                         return PatternResult.PATTERN;
-                    } else if ( allowNullRestrictedTypes &&
+                    } else if (allowNullRestrictedTypes &&
                             (peekToken(lookahead, EMOTIONAL_QUALIFIER, GENERIC_TYPE_END) ||
                             peekToken(lookahead, EMOTIONAL_QUALIFIER, LT) ||
                             peekToken(lookahead, EMOTIONAL_QUALIFIER, LBRACKET) ||
-                            peekToken(lookahead, EMOTIONAL_QUALIFIER, COMMA)) ) {
+                            peekToken(lookahead, EMOTIONAL_QUALIFIER, COMMA))) {
                         // this is a type - skip the emotional anno and continue
                         lookahead++;
                         break;
@@ -3758,7 +3770,7 @@ public class JavacParser implements Parser {
         if (token.kind == FINAL || token.kind == MONKEYS_AT) {
             return variableDeclarators(optFinal(0), parseType(true), stats, true).toList();
         } else {
-            JCExpression t = term(EXPR | TYPE | ALLOW_BANGS);
+            JCExpression t = term(EXPR | TYPE | ALLOW_BANGS_QUES);
             if (wasTypeMode() && LAX_IDENTIFIER.test(token.kind)) {
                 return variableDeclarators(modifiersOpt(), t, stats, true).toList();
             } else if (wasTypeMode() && token.kind == COLON) {
@@ -4247,7 +4259,7 @@ public class JavacParser implements Parser {
             JCExpression t = parseType(true);
             return variableDeclaratorRest(token.pos, mods, t, identOrUnderscore(), true, null, true, false);
         }
-        JCExpression t = term(EXPR | TYPE | ALLOW_BANGS);
+        JCExpression t = term(EXPR | TYPE | ALLOW_BANGS_QUES);
         if (wasTypeMode() && LAX_IDENTIFIER.test(token.kind)) {
             JCModifiers mods = F.Modifiers(0);
             return variableDeclaratorRest(token.pos, mods, t, identOrUnderscore(), true, null, true, false);
@@ -5059,7 +5071,7 @@ public class JavacParser implements Parser {
             nextToken();
         } else {
             // method returns types are un-annotated types
-            type = unannotatedType(false, TYPE | ALLOW_BANGS);
+            type = unannotatedType(false, TYPE | ALLOW_BANGS_QUES);
         }
 
         // Constructor
@@ -5167,7 +5179,7 @@ public class JavacParser implements Parser {
             type = to(F.at(pos).TypeIdent(TypeTag.VOID));
             nextToken();
         } else {
-            type = unannotatedType(false, TYPE | ALLOW_BANGS);
+            type = unannotatedType(false, TYPE | ALLOW_BANGS_QUES);
         }
 
         if (token.kind == IDENTIFIER) {
@@ -5713,14 +5725,14 @@ public class JavacParser implements Parser {
         // need to distinguish between vararg annos and array annos
         // look at typeAnnotationsPushedBack comment
         this.permitTypeAnnotationsPushBack = true;
-        JCExpression type = parseType(lambdaParameter, TYPE | ALLOW_BANGS);
+        JCExpression type = parseType(lambdaParameter, TYPE | ALLOW_BANGS_QUES);
         this.permitTypeAnnotationsPushBack = false;
 
         if (token.kind == ELLIPSIS) {
             if (type instanceof JCNullableTypeExpression nullableTypeExpression &&
                     nullableTypeExpression.getNullMarker() != NullMarker.UNSPECIFIED) {
                 // can't mix bangs and varargs
-                unsupportedNullRestriction(); // @@@: we could probably improve the position here
+                unsupportedNullProjection(nullableTypeExpression.getNullMarker()); // @@@: we could probably improve the position here
             }
             List<JCAnnotation> varargsAnnos = typeAnnotationsPushedBack;
             typeAnnotationsPushedBack = List.nil();

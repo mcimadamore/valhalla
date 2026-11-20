@@ -215,7 +215,7 @@ class ReplParser extends JavacParser {
                         // unless expression is being forced
                         t = term(forceExpression
                                 ? EXPR
-                                : EXPR | TYPE | ALLOW_BANGS);
+                                : EXPR | TYPE | ALLOW_BANGS_QUES);
                     }
                     if (token.kind == COLON && t.hasTag(IDENT)) {
                         // labelled statement

@@ -230,3 +230,4 @@ compiler.misc.feature.null.restricted.types
 compiler.misc.attribute.must.be.unique                                   # bad class file
 compiler.warn.suspicious.nullness.conversion
 compiler.err.restricted.array.missing.init
+compiler.err.unsupported.nullable.type
